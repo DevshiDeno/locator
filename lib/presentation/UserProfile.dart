@@ -6,8 +6,9 @@ import 'package:locator/Components/ListsTiles.dart';
 class Profile extends StatelessWidget {
   final String user;
   final String currentLocation;
+  final String prevLocation;
   final int id;
-  const Profile({super.key, required this.user, required this.currentLocation, required this.id});
+  const Profile({super.key, required this.user, required this.currentLocation, required this.id, required this.prevLocation});
 
   @override
   Widget build(BuildContext context) {
@@ -161,7 +162,7 @@ class Profile extends StatelessWidget {
                     child: Column(
                       children: [
                         ListTiles(text: "Last Updates",icon: Icon(Icons.arrow_circle_up_rounded,size: 20,)),
-                        ListTiles(text: "Moi avenue",dateTime: DateTime.now(),),
+                        ListTiles(text: prevLocation,dateTime: DateTime.now(),),
                         ListTiles(text: "Moi avenue",dateTime: DateTime.now(),),
                         ListTiles(text: "Moi avenue",dateTime: DateTime.now(),),
                         ListTiles(text: "Ronald Ngara",dateTime: DateTime.now(),),
