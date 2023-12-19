@@ -1,13 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:locator/Components/ListsTiles.dart';
 
 class Profile extends StatelessWidget {
   final String user;
   final String currentLocation;
   final String prevLocation;
-  final int id;
+  final double id;
   const Profile({super.key, required this.user, required this.currentLocation, required this.id, required this.prevLocation});
 
   @override

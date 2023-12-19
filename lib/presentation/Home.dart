@@ -1,13 +1,11 @@
 import 'dart:async';
-
-import 'package:flutter/cupertino.dart';
+import 'dart:convert';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:locator/Components/Buttons.dart';
 import 'package:locator/Components/showDialog.dart';
 import 'package:locator/Data/user_details.dart';
-import 'package:locator/Model/home.model.dart';
 import 'package:locator/presentation/UserProfile.dart';
 import 'bottom_bar.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -20,48 +18,26 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  LatLng currentPosition = LatLng(-1.286389, 36.817223);
+  LatLng? currentPosition;
   GoogleMapController? mapController;
   late BitmapDescriptor customMarker;
   String? address;
   String? prev;
   late LatLng newPosition;
   late TextEditingController controller;
-  Set<Marker> markers = Set();
+  Set<Marker> markers = {};
   List<User> filteredUsers = [];
+  List<User> fetchedUser = []; // Define the list here
+  final DatabaseReference _reference =
+      FirebaseDatabase.instance.ref().child('users');
 
-  Future _getCurrentLocation() async {
-    bool isGeolocationAvailable = await Geolocator.isLocationServiceEnabled();
-    Position _position = Position(
-      latitude: 0.0,
-      longitude: 0.0,
-      timestamp: DateTime.now(),
-      accuracy: 0.0,
-      altitude: 0.0,
-      altitudeAccuracy: 0.0,
-      heading: 0.0,
-      headingAccuracy: 0.0,
-      speed: 0.0,
-      speedAccuracy: 0.0,
-    );
-    if (isGeolocationAvailable) {
-      try {
-        _position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.best);
-      } catch (error) {
-        return _position;
-      }
-    }
-    return _position;
-  }
+  Future<String> getAddressFromLatLng(position) async {
 
-  Future<String> getAddressFromLatLng(LatLng coordinates) async {
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(
-        coordinates.latitude,
-        coordinates.longitude,
+        position.latitude,
+        position.longitude,
       );
-
       if (placemarks.isNotEmpty) {
         return placemarks[0].name ?? "Unknown Place";
       } else {
@@ -74,55 +50,53 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _loadUsers() async {
-    try {
-      List<User> fetchedUsers = await ApiService.fetchUsers();
-      setState(() {
-        User.users = fetchedUsers;
-        markers = Set.from(User.users.map((user) => Marker(
-          markerId: MarkerId(user.name),
-          position: user.currentLocation.toLatLng(),
-          infoWindow: InfoWindow(
-            title: user.name
-          )
-          // You can customize other properties of the marker as needed
-        )));
-        print(User.users);
-        filteredUsers = List.from(User.users); // Initially, display all users
+    _reference.onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        print(event.snapshot.value);
 
-      });
-    } catch (e) {
-      print('Error loading users: $e');
-    }
+        try {
+          // Assuming User.fromMap accepts List<dynamic>
+          Map<String, dynamic> dataList = jsonDecode(jsonEncode(event.snapshot.value));
+          List<User> users =
+              dataList.values.map((item) => User.fromMap(item)).toList();
+          setState(() {
+            User.users = users;
+            markers = Set.from(User.users.map((user) => Marker(
+                  markerId: MarkerId(user.name),
+                  position: user.currentLocation.toLatLng(),
+                  infoWindow: InfoWindow(title: user.name),
+                )));
+            fetchedUser = List.from(User.users);
+            // Initially, display all users
+          });
+        } catch (e) {
+          print('Error updating state: $e');
+        }
+      }
+    });
   }
-
 
   void filterUsers(String category) {
     setState(() {
       if (category == "All") {
         // Display all users
-        filteredUsers = List.from(User.users);
+        filteredUsers = List.from(fetchedUser);
       } else {
         // Filter users based on the selected category
-        filteredUsers = User.users.where((user) => user.category == category).toList();
+        filteredUsers =
+            User.users.where((user) => user.category == category).toList();
       }
     });
   }
-  @override
-  void initState() {
-    controller = TextEditingController();
-    super.initState();
-    _getCurrentLocation();
-    _loadUsers();
-  }
 
-  void selectedItem(int index) async {
+  Future<void> selectedItem(int index) async {
     if (User.users.isNotEmpty && index >= 0 && index < User.users.length) {
-      LatLng Location = User.users[index].currentLocation.toLatLng();
+      LatLng location = User.users[index].currentLocation.toLatLng();
 
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
-          Location.latitude,
-          Location.longitude,
+          location.latitude,
+          location.longitude,
         );
 
         address = placemarks.isNotEmpty
@@ -132,20 +106,28 @@ class _MyHomePageState extends State<MyHomePage> {
         print("Address: $address");
 
         CameraPosition position = CameraPosition(
-          target: Location,
+          target: location,
           zoom: 12,
         );
 
         setState(() {
-          currentPosition = Location;
+          currentPosition = location;
           mapController
               ?.animateCamera(CameraUpdate.newCameraPosition(position));
-          //marker = customMarker;
+          markers = markers;
         });
       } catch (e) {
         print("Error getting address: $e");
       }
     }
+  }
+
+  @override
+  void initState() {
+    controller = TextEditingController();
+    super.initState();
+  //  getAddressFromLatLng(currentPosition);
+    _loadUsers();
   }
 
   @override
@@ -156,12 +138,14 @@ class _MyHomePageState extends State<MyHomePage> {
       body: Stack(
         children: [
           GoogleMap(
+              mapType: MapType.terrain,
               zoomControlsEnabled: false,
               onMapCreated: (controller) {
                 mapController = controller;
               },
-              initialCameraPosition:
-                  CameraPosition(target: currentPosition, zoom: 12.0),
+              initialCameraPosition: CameraPosition(
+                  target: currentPosition ?? const LatLng(-1.292066, 36.821946),
+                  zoom: 12.0),
               markers: markers),
           Positioned(
             top: 10,
@@ -269,7 +253,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         height: 50,
                         //color: Colors.white,
                         child: Row(
-                           mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           //crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             ElevatedButtons(
@@ -300,107 +284,97 @@ class _MyHomePageState extends State<MyHomePage> {
                     SizedBox(
                       height: he * 0.24,
                       width: we,
-                      child: ListView.builder(
-                        itemCount: filteredUsers.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final user = filteredUsers[index];
-                          return Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: GestureDetector(
-                              onTap: () {
-                                //zooms to the specific location
-                                selectedItem(index);
-                                print(index);
-                                print("tapped");
-                              },
-                              child: Row(
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsets.all(2.0),
-                                    child: CircleAvatar(
-                                      radius: 20,
-                                      child: Image.network(
-                                        "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=388&q=80",
-                                     fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    //color: Colors.red,
-                                    width: we * 0.45,
-                                    height: 60,
-                                    child: Center(
-                                      child: ListTile(
-                                        //contentPadding:EdgeInsets.symmetric(horizontal: .0) ,
-                                        title: Text(
-                                          user.name,
-                                          style: TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold),
+                        child: ListView.builder(
+                          itemCount: filteredUsers.length,
+                          itemBuilder: (context, index) {
+                            final user = filteredUsers[index];
+                            return
+                              Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: GestureDetector(
+                                onTap: () async {
+                                  //zooms to the specific location
+                                  await selectedItem(index);
+                                },
+                                child: Row(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.all(2.0),
+                                      child: CircleAvatar(
+                                        radius: 20,
+                                        child: Image.network(
+                                          "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=388&q=80",
+                                          fit: BoxFit.cover,
                                         ),
-                                        subtitle: FutureBuilder<String>(
-                                            future: getAddressFromLatLng(user
-                                                .currentLocation
-                                                .toLatLng()),
-                                            builder: (context, snapshot) {
-                                              if (snapshot.connectionState ==
-                                                  ConnectionState.waiting) {
-                                                return CircularProgressIndicator(); // or a loading indicator
-                                              } else if (snapshot.hasError) {
-                                                return Text(
-                                                    'Error: ${snapshot.error}');
-                                              } else {
-                                                address = snapshot.data ??
-                                                    "Unknown Place";
-                                                return Text(address!);
-                                                // Other ListTile properties or widgets you want to display
-                                              }
-                                            }),
                                       ),
                                     ),
-                                  ),
-                                  // SizedBox(width: we * 0.1),
-                                  Container(
-                                    width: 35,
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(30),
-                                        color: Colors.white70),
-                                    child: const Center(
-                                      child: Icon(Icons.battery_2_bar),
+                                    Container(
+                                      width: we * 0.45,
+                                      height: 60,
+                                      child: Center(
+                                        child: ListTile(
+                                          title: Text(
+                                            user.name,
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          subtitle: FutureBuilder(
+                                            future: getAddressFromLatLng(user.currentLocation),
+                                            builder: (context, snapshot) {
+                                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                                return Text("Loading...");
+                                              } else if (snapshot.hasError) {
+                                                return Text("Error: ${snapshot.error}");
+                                              } else {
+                                                return Text(snapshot.data ?? "Unknown Place");
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(width: we * 0.03),
-                                  Container(
-                                    width: 35,
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(30),
-                                        color: Colors.white70),
-                                    child: Center(
-                                        child: IconButton(
-                                      onPressed: () async {
-                                        String prev=await getAddressFromLatLng(user.previousLocation.toLatLng());
-                                        Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                                builder: (context) => Profile(
-                                                    user: user.name,
-                                                    currentLocation: address!,
-                                                    id: user.id, prevLocation: prev,
-                                                )));
-                                        print(user.currentLocation);
-                                        print(address);
-                                      },
-                                      icon: Icon(Icons.send_and_archive_sharp),
-                                    )),
-                                  ),
-                                ],
+                                    Container(
+                                      width: 35,
+                                      height: 35,
+                                      decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(30),
+                                          color: Colors.white70),
+                                      child: const Center(
+                                        child: Icon(Icons.battery_2_bar),
+                                      ),
+                                    ),
+                                    SizedBox(width: we * 0.03),
+                                    Container(
+                                      width: 35,
+                                      height: 35,
+                                      decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(30),
+                                          color: Colors.white70),
+                                      child: Center(
+                                          child: IconButton(
+                                            onPressed: () async {
+                                              String current=await getAddressFromLatLng(user.currentLocation.toLatLng());
+                                              String prev=await getAddressFromLatLng(user.previousLocation.toLatLng());
+                                              Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                      builder: (context) => Profile(
+                                                        user: user.name,
+                                                        currentLocation: current,
+                                                        id: user.id, prevLocation: prev,
+                                                      )));
+                                              print('User ${user.id}');
+                                            },
+                                            icon: Icon(Icons.send_and_archive_sharp),
+                                          )),
+                                    ),                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            );
+                          },
+                        )
                     )
                   ],
                 ),

@@ -1,42 +1,39 @@
 import 'dart:math';
+
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-
 class User {
-   int id;
+  double id;
   String name;
-   Image? profileImage;
   String category;
+  String email;
   Location currentLocation;
   Location previousLocation;
- // Marker? marker;
+
   User({
     required this.id,
-     //this.marker,
     required this.name,
-     this.profileImage,
     required this.category,
+    required this.email,
     required this.currentLocation,
     required this.previousLocation,
   });
-  factory User.fromJson(Map<String, dynamic> json) {
+
+  factory User.fromMap(Map<String, dynamic> data) {
     return User(
-      id: json['id'],
-      name: json['name'],
-      category: json['category'],
-      currentLocation: Location.fromJson(json['currentLocation']),
-      previousLocation: Location.fromJson(json['previousLocation']),
+      id:double.parse((Random().nextDouble() * 1000).toStringAsFixed(3)),
+      name: data['name'] ?? '',
+      category: data['category'] ?? '',
+      email: data['email'] ?? '',
+      currentLocation: Location.fromMap(data['currentLocation'] ?? {}),
+      previousLocation: Location.fromMap(data['previousLocation'] ?? {}),
     );
   }
 
-
-   static List<User> users = [];
-
-  static double randomDouble() {
-    // Generates a random double between -90.0 and 90.0
-    return Random().nextDouble() * 180.0 - 90.0;
-  }
+  static List<User> users = [];
 }
+
 class Location {
   final double latitude;
   final double longitude;
@@ -46,14 +43,40 @@ class Location {
     required this.longitude,
   });
 
-  factory Location.fromJson(Map<String, dynamic> json) {
+  factory Location.fromMap(Map<String, dynamic> data) {
     return Location(
-      latitude: json['latitude'],
-      longitude: json['longitude'],
+      latitude: data['latitude'] ?? 0.0,
+      longitude: data['longitude'] ?? 0.0,
     );
   }
-
   LatLng toLatLng() {
     return LatLng(latitude, longitude);
   }
 }
+// class Location {
+//   final double latitude;
+//   final double longitude;
+//
+//   Location({
+//     required this.latitude,
+//     required this.longitude,
+//   });
+//
+//   factory Location.fromSnapshot(DataSnapshot snapshot) {
+//     Map<String, dynamic>? data = snapshot.value as Map<String, dynamic>?;
+//
+//     if (data != null) {
+//       return Location(
+//         latitude: data['latitude'] ?? 0.0,
+//         longitude: data['longitude'] ?? 0.0,
+//       );
+//     }
+//
+//     // Handle the case where data is null
+//     return Location(latitude: 0.0, longitude: 0.0);
+//   }
+//
+//   LatLng toLatLng() {
+//     return LatLng(latitude, longitude);
+//   }
+// }

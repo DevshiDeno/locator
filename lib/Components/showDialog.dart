@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:math';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
+
 void addButton(context) {
   TextEditingController nameController = TextEditingController();
   TextEditingController cityController = TextEditingController();
@@ -10,6 +12,7 @@ void addButton(context) {
   showDialog(
     context: context,
     builder: (context) {
+      const String category ='people';
       return Container(
         height: 200,
         child: AlertDialog(
@@ -48,7 +51,8 @@ void addButton(context) {
                 Navigator.pop(context);
 
                 // Convert city to coordinates
-                List<Location> locations = await locationFromAddress(cityController.text);
+                List<Location> locations = await locationFromAddress(
+                    cityController.text);
 
                 if (locations.isNotEmpty) {
                   // Take the first location (you may want to handle multiple results differently)
@@ -57,7 +61,7 @@ void addButton(context) {
                   double longitude = location.longitude;
 
                   // Post data with coordinates
-                  _postPersonData(nameController.text, cityController.text, latitude, longitude);
+                  _postPersonData(nameController.text,category,latitude,longitude);
                 } else {
                   // Handle case where no coordinates were found for the city
                   print("No coordinates found for ${cityController.text}");
@@ -71,6 +75,7 @@ void addButton(context) {
     },
   );
 }
+
 void addItem(context) {
   TextEditingController typeController = TextEditingController();
   TextEditingController cityController = TextEditingController();
@@ -78,6 +83,8 @@ void addItem(context) {
   showDialog(
     context: context,
     builder: (context) {
+      const String category ='item';
+      //double id=random.nextDouble();
       return AlertDialog(
         title: Text("Add Item"),
         content: Container(
@@ -114,8 +121,10 @@ void addItem(context) {
               Navigator.pop(context);
 
               // Convert city to coordinates
-              List<Location> locations = await locationFromAddress(cityController.text);
-
+              List<Location> locations = await locationFromAddress(
+                  cityController.text
+              );
+              print(cityController.text);
               if (locations.isNotEmpty) {
                 // Take the first location (you may want to handle multiple results differently)
                 Location location = locations.first;
@@ -123,7 +132,7 @@ void addItem(context) {
                 double longitude = location.longitude;
 
                 // Post data with coordinates
-                _postItemData(typeController.text, cityController.text, latitude, longitude);
+                _postItemData(typeController.text,category, latitude, longitude);
               } else {
                 // Handle case where no coordinates were found for the city
                 print("No coordinates found for ${cityController.text}");
@@ -137,68 +146,30 @@ void addItem(context) {
   );
 }
 
-Future<void> _postItemData(String type, String city, double latitude, double longitude) async {
+Future<void> _postItemData(String name, String item,double latitude, double longitude) async {
   // Create a Map with the entered data
-  Map<String, dynamic> itemData = {
-    "type": type,
-    "city": city,
+final DatabaseReference ref=FirebaseDatabase.instance.ref().child('users');
+  ref.push().set({
+    "name": "name",
+    "category":"item",
     "currentLocation": {"latitude": latitude, "longitude": longitude},
-  };
-
-  // Convert the Map to a JSON string
-  String jsonData = json.encode(itemData);
-  print("Posted JSON data: $jsonData");
-  String apiUrl="https://locatormap.free.beeceptor.com/locate";
-
-  try {
-    // Make a POST request to the API
-    var response = await http.post(
-      Uri.parse(apiUrl),
-      headers: {"Content-Type": "application/json"},
-      body: jsonData,
-    );
-
-    // Check if the request was successful (status code 200)
-    if (response.statusCode == 200) {
-      print("Successfully posted JSON data: $jsonData");
-    } else {
-      print("Failed to post JSON data. Status code: ${response.statusCode}");
-    }
-  } catch (error) {
-    print("Error posting JSON data: $error");
-  }
+  }).then((_) {
+    print('Item added successfully');
+  }).catchError((error) {
+    print('Error adding item: $error');
+  });
 }
-Future<void> _postPersonData(String name, String city, double latitude, double longitude) async {
+
+Future<void> _postPersonData(String name, String item,double latitude, double longitude) async {
   // Create a Map with the entered data
-  Map<String, dynamic> personData = {
+  final DatabaseReference ref=FirebaseDatabase.instance.ref().child('users');
+  ref.push().set({
     "name": name,
+    "category":item,
     "currentLocation": {"latitude": latitude, "longitude": longitude},
-  };
-
-  // Convert the Map to a JSON string
-  String jsonData = json.encode(personData);
-  // TODO: Send the jsonData to your server or perform other actions
-  // For example, you can print it for testing:
-  print("Posted JSON data: $jsonData");
-  // Define the API endpoint URL
-  String apiUrl = "https://your-api-endpoint.com"; // Replace with your actual API endpoint
-
-  try {
-    // Make a POST request to the API
-    var response = await http.post(
-      Uri.parse(apiUrl),
-      headers: {"Content-Type": "application/json"},
-      body: jsonData,
-    );
-
-    // Check if the request was successful (status code 200)
-    if (response.statusCode == 200) {
-      print("Successfully posted JSON data: $jsonData");
-    } else {
-      print("Failed to post JSON data. Status code: ${response.statusCode}");
-    }
-  } catch (error) {
-    print("Error posting JSON data: $error");
-  }
-
+  }).then((_) {
+    print('Item added successfully');
+  }).catchError((error) {
+    print('Error adding item: $error');
+  });
 }

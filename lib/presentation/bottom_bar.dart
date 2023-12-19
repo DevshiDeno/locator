@@ -68,6 +68,9 @@ class _BottomBarState extends State<BottomBar> {
                           ? Colors.blueAccent
                           : Colors.black38,
                     ),
+                    // Text(
+                    //     icontitles[index] as String
+                    // ),
                     SizedBox(height: size.width * .03),
                   ],
                 ));
@@ -80,5 +83,11 @@ class _BottomBarState extends State<BottomBar> {
     Icons.drive_eta_outlined,
     Icons.safety_check_outlined,
     Icons.chat_outlined,
+  ];
+  List <Text>icontitles=[
+    Text("Location"),
+    Text("Driving"),
+    Text("Safety"),
+    Text("Chat")
   ];
 }
