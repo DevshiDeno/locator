@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-class User {
+class Users {
   double id;
   String name;
   String category;
@@ -11,7 +11,7 @@ class User {
   Location currentLocation;
   Location previousLocation;
 
-  User({
+  Users({
     required this.id,
     required this.name,
     required this.category,
@@ -20,8 +20,8 @@ class User {
     required this.previousLocation,
   });
 
-  factory User.fromMap(Map<String, dynamic> data) {
-    return User(
+  factory Users.fromMap(Map<String, dynamic> data) {
+    return Users(
       id:double.parse((Random().nextDouble() * 1000).toStringAsFixed(3)),
       name: data['name'] ?? '',
       category: data['category'] ?? '',
@@ -31,7 +31,7 @@ class User {
     );
   }
 
-  static List<User> users = [];
+  static List<Users> users = [];
 }
 
 class Location {
@@ -53,30 +53,3 @@ class Location {
     return LatLng(latitude, longitude);
   }
 }
-// class Location {
-//   final double latitude;
-//   final double longitude;
-//
-//   Location({
-//     required this.latitude,
-//     required this.longitude,
-//   });
-//
-//   factory Location.fromSnapshot(DataSnapshot snapshot) {
-//     Map<String, dynamic>? data = snapshot.value as Map<String, dynamic>?;
-//
-//     if (data != null) {
-//       return Location(
-//         latitude: data['latitude'] ?? 0.0,
-//         longitude: data['longitude'] ?? 0.0,
-//       );
-//     }
-//
-//     // Handle the case where data is null
-//     return Location(latitude: 0.0, longitude: 0.0);
-//   }
-//
-//   LatLng toLatLng() {
-//     return LatLng(latitude, longitude);
-//   }
-// }

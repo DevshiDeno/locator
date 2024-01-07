@@ -1,12 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:locator/Auth/login.dart';
 import 'package:locator/Components/Buttons.dart';
 import 'package:locator/Components/showDialog.dart';
 import 'package:locator/Data/user_details.dart';
+import 'package:locator/Provider/Provider.dart';
+import 'package:locator/presentation/Notifications.dart';
 import 'package:locator/presentation/UserProfile.dart';
+import 'package:provider/provider.dart';
 import 'bottom_bar.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -18,6 +23,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  late String receiver;
   LatLng? currentPosition;
   GoogleMapController? mapController;
   late BitmapDescriptor customMarker;
@@ -26,13 +32,15 @@ class _MyHomePageState extends State<MyHomePage> {
   late LatLng newPosition;
   late TextEditingController controller;
   Set<Marker> markers = {};
-  List<User> filteredUsers = [];
-  List<User> fetchedUser = []; // Define the list here
+  List<Users> filteredUsers = [];
   final DatabaseReference _reference =
       FirebaseDatabase.instance.ref().child('users');
-
+int _currentIndex=0;
+  final List<Widget> _screens = [
+    MyHomePage(),
+    Messages(),
+  ];
   Future<String> getAddressFromLatLng(position) async {
-
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
@@ -52,21 +60,20 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _loadUsers() async {
     _reference.onValue.listen((event) {
       if (event.snapshot.value != null) {
-        print(event.snapshot.value);
-
         try {
           // Assuming User.fromMap accepts List<dynamic>
-          Map<String, dynamic> dataList = jsonDecode(jsonEncode(event.snapshot.value));
-          List<User> users =
-              dataList.values.map((item) => User.fromMap(item)).toList();
+          Map<String, dynamic> dataList =
+              jsonDecode(jsonEncode(event.snapshot.value));
+          List<Users> users =
+              dataList.values.map((item) => Users.fromMap(item)).toList();
           setState(() {
-            User.users = users;
-            markers = Set.from(User.users.map((user) => Marker(
+            Users.users = users;
+            markers = Set.from(Users.users.map((user) => Marker(
                   markerId: MarkerId(user.name),
                   position: user.currentLocation.toLatLng(),
                   infoWindow: InfoWindow(title: user.name),
                 )));
-            fetchedUser = List.from(User.users);
+            filteredUsers = List.from(Users.users);
             // Initially, display all users
           });
         } catch (e) {
@@ -80,18 +87,18 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       if (category == "All") {
         // Display all users
-        filteredUsers = List.from(fetchedUser);
+        filteredUsers = List.from(Users.users);
       } else {
         // Filter users based on the selected category
         filteredUsers =
-            User.users.where((user) => user.category == category).toList();
+            Users.users.where((user) => user.category == category).toList();
       }
     });
   }
 
   Future<void> selectedItem(int index) async {
-    if (User.users.isNotEmpty && index >= 0 && index < User.users.length) {
-      LatLng location = User.users[index].currentLocation.toLatLng();
+    if (Users.users.isNotEmpty && index >= 0 && index < Users.users.length) {
+      LatLng location = Users.users[index].currentLocation.toLatLng();
 
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -126,7 +133,6 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     controller = TextEditingController();
     super.initState();
-  //  getAddressFromLatLng(currentPosition);
     _loadUsers();
   }
 
@@ -138,7 +144,7 @@ class _MyHomePageState extends State<MyHomePage> {
       body: Stack(
         children: [
           GoogleMap(
-              mapType: MapType.terrain,
+              mapType: MapType.normal,
               zoomControlsEnabled: false,
               onMapCreated: (controller) {
                 mapController = controller;
@@ -165,19 +171,31 @@ class _MyHomePageState extends State<MyHomePage> {
                       padding: const EdgeInsets.all(8.0),
                       child: CircleAvatar(
                           backgroundColor: Colors.white,
-                          radius: 30,
+                          radius: 20,
                           child: IconButton(
-                              onPressed: () {},
-                              icon: const Icon(Icons.search_outlined))),
+                              onPressed: () async {
+                               try {
+                                  await FirebaseAuth.instance.signOut();
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                                  );
+                                }catch(e){
+                                 print(e);
+                               }
+                              },
+                              icon: const Icon(Icons.logout_rounded))),
                     ),
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: CircleAvatar(
                           backgroundColor: Colors.white,
-                          radius: 30,
+                          radius: 20,
                           child: IconButton(
-                              onPressed: () {},
-                              icon: const Icon(Icons.settings))),
+                              onPressed: () {
+                                shareLocation(context);
+                              },
+                              icon: Icon(Icons.share_location_rounded))),
                     ),
                   ],
                 ),
@@ -189,7 +207,7 @@ class _MyHomePageState extends State<MyHomePage> {
               left: 16.0,
               child: Container(
                 decoration: BoxDecoration(
-                    color: Colors.black26,
+                    color: Colors.lightGreenAccent,
                     borderRadius: BorderRadius.circular(16)),
                 child: Column(
                   children: [
@@ -284,97 +302,26 @@ class _MyHomePageState extends State<MyHomePage> {
                     SizedBox(
                       height: he * 0.24,
                       width: we,
-                        child: ListView.builder(
-                          itemCount: filteredUsers.length,
-                          itemBuilder: (context, index) {
-                            final user = filteredUsers[index];
-                            return
-                              Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: GestureDetector(
-                                onTap: () async {
-                                  //zooms to the specific location
-                                  await selectedItem(index);
-                                },
-                                child: Row(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.all(2.0),
-                                      child: CircleAvatar(
-                                        radius: 20,
-                                        child: Image.network(
-                                          "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=388&q=80",
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
-                                    ),
-                                    Container(
-                                      width: we * 0.45,
-                                      height: 60,
-                                      child: Center(
-                                        child: ListTile(
-                                          title: Text(
-                                            user.name,
-                                            style: TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          subtitle: FutureBuilder(
-                                            future: getAddressFromLatLng(user.currentLocation),
-                                            builder: (context, snapshot) {
-                                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                                return Text("Loading...");
-                                              } else if (snapshot.hasError) {
-                                                return Text("Error: ${snapshot.error}");
-                                              } else {
-                                                return Text(snapshot.data ?? "Unknown Place");
-                                              }
-                                            },
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Container(
-                                      width: 35,
-                                      height: 35,
-                                      decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(30),
-                                          color: Colors.white70),
-                                      child: const Center(
-                                        child: Icon(Icons.battery_2_bar),
-                                      ),
-                                    ),
-                                    SizedBox(width: we * 0.03),
-                                    Container(
-                                      width: 35,
-                                      height: 35,
-                                      decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(30),
-                                          color: Colors.white70),
-                                      child: Center(
-                                          child: IconButton(
-                                            onPressed: () async {
-                                              String current=await getAddressFromLatLng(user.currentLocation.toLatLng());
-                                              String prev=await getAddressFromLatLng(user.previousLocation.toLatLng());
-                                              Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                      builder: (context) => Profile(
-                                                        user: user.name,
-                                                        currentLocation: current,
-                                                        id: user.id, prevLocation: prev,
-                                                      )));
-                                              print('User ${user.id}');
-                                            },
-                                            icon: Icon(Icons.send_and_archive_sharp),
-                                          )),
-                                    ),                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        )
+                      child: ListView.builder(
+                        itemCount: filteredUsers.length,
+                        itemBuilder: (context, index) {
+                          final user = filteredUsers[index];
+                          return Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: GestureDetector(
+                              onTap: () async {
+                                final provider = Provider.of<GetReceiversName>(
+                                    context,
+                                    listen:
+                                        false); //zooms to the specific location
+                                await selectedItem(index);
+                                await provider.getReceiver(index);
+                              },
+                              child: buildRow(we, user, context),
+                            ),
+                          );
+                        },
+                      ),
                     )
                   ],
                 ),
@@ -383,7 +330,85 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: const BottomBar(),
+    );
+  }
+
+  Row buildRow(double we, Users user, BuildContext context) {
+    return Row(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(2.0),
+          child: CircleAvatar(
+            radius: 20,
+            child: Image.network(
+              "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=388&q=80",
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        Container(
+          width: we * 0.45,
+          height: 60,
+          child: Center(
+            child: ListTile(
+              title: Text(
+                user.name,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: FutureBuilder(
+                future: getAddressFromLatLng(user.currentLocation),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Text("Loading...");
+                  } else if (snapshot.hasError) {
+                    return Text("Error: ${snapshot.error}");
+                  } else {
+                    return Text(snapshot.data ?? "Unknown Place");
+                  }
+                },
+              ),
+            ),
+          ),
+        ),
+        Container(
+          width: 35,
+          height: 35,
+          decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30), color: Colors.white70),
+          child: const Center(
+            child: Icon(Icons.battery_2_bar),
+          ),
+        ),
+        SizedBox(width: we * 0.03),
+        Container(
+          width: 35,
+          height: 35,
+          decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30), color: Colors.white70),
+          child: Center(
+              child: IconButton(
+            onPressed: () async {
+              String current =
+                  await getAddressFromLatLng(user.currentLocation.toLatLng());
+              String prev =
+                  await getAddressFromLatLng(user.previousLocation.toLatLng());
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => Profile(
+                            user: user.name,
+                            currentLocation: current,
+                            id: user.id,
+                            prevLocation: prev,
+                          )));
+            },
+            icon: Icon(Icons.send_and_archive_sharp),
+          )),
+        ),
+      ],
     );
   }
 }
