@@ -4,7 +4,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 class Users {
-  double id;
+  String id;
   String name;
   String category;
   String email;
@@ -22,7 +22,7 @@ class Users {
 
   factory Users.fromMap(Map<String, dynamic> data) {
     return Users(
-      id:double.parse((Random().nextDouble() * 1000).toStringAsFixed(3)),
+      id:data['id'],
       name: data['name'] ?? '',
       category: data['category'] ?? '',
       email: data['email'] ?? '',

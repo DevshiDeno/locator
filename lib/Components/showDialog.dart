@@ -188,7 +188,7 @@ void shareLocation(context) {
   final received = Provider.of<GetReceiversName>(context, listen: false);
   String? receiver = received.receiver;
   Position currentPosition;
-  if(receiver!=null)
+  if(receiver!=null) {
     showDialog(
       context: context,
       builder: (context) {
@@ -201,12 +201,12 @@ void shareLocation(context) {
                 text: 'Share',
                 onPressed: () async {
                   currentPosition = await provider.determinePosition();
-                  String currentUser = await user.getCurrentUserId();
+                  String? currentUser = await user.getCurrentUserDisplayName();
                   print(currentUser);
                   print(receiver);
                   await _share(
                       currentUser,
-                      receiver!,
+                      receiver,
                       message,
                       currentPosition.latitude,
                       currentPosition.longitude,
@@ -229,18 +229,18 @@ void shareLocation(context) {
           ),
         );
       });
-  else{
+  } else{
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Select a Person to share location to')),
     );
   }
 }
 
-Future<void> _share(String receiver, String sender, String message,
+Future<void> _share(String sender, String receiver, String message,
     double latitude, double longitude, DateTime dateTime) async {
   final DatabaseReference ref = FirebaseDatabase.instance.ref().child('shared');
   ref.push().set({
-    'name': sender,
+    'sendersName': sender,
     'receiver': receiver,
     'message': message,
     'currentLocation': {'latitude': latitude, 'longitude': longitude},

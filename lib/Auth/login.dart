@@ -82,8 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                                builder: (context) => Home(
-                                    )),
+                                builder: (context) => Home()),
                           );
                         } catch (e) {
                           print('Error: $e');

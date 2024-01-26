@@ -21,6 +21,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (context) => SearchUserProvider()),
         ChangeNotifierProvider(create: (context) => GetReceiversName()),
         ChangeNotifierProvider(create: (context) => CurrentUser()),
         ChangeNotifierProvider(create: (context) => GoogleSignInProvider()),
@@ -48,17 +49,17 @@ class MyApp extends StatelessWidget {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             // Show a loading indicator while checking the authentication state
-            return Scaffold(
+            return const Scaffold(
               body: Center(
                 child: CircularProgressIndicator(),
               ),
             );
           } else if (snapshot.hasData && snapshot.data != null) {
             // User is signed in, navigate to HomeScreen
-            return Home();
+            return const Home();
           } else {
             // User is not signed in, navigate to LoginScreen
-            return LoginScreen();
+            return const LoginScreen();
           }
         },
       ),

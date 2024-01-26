@@ -1,8 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:locator/Auth/Create_account.dart';
 import 'package:locator/Auth/login.dart';
@@ -65,6 +68,7 @@ class CurrentUser extends ChangeNotifier {
       return 'No Display Name';
     }
   }
+
   Future<String> getCurrentUserId() async {
     User? user = FirebaseAuth.instance.currentUser;
 
@@ -118,9 +122,12 @@ class CurrentLocations extends ChangeNotifier {
 
   Future<void> newUser({
     required BuildContext context,
+    required String id,
     required String name,
     required String email,
     required String password,
+    required double latitude,
+    required double longitude,
   }) async {
     try {
       UserCredential userCredential =
@@ -130,14 +137,18 @@ class CurrentLocations extends ChangeNotifier {
       );
       await userCredential.user?.updateDisplayName(name);
       await userCredential.user?.reload();
+      id=userCredential.user!.uid;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Account created')),
       );
-      final DatabaseReference ref = FirebaseDatabase.instance.ref().child('users');
+      final DatabaseReference ref =
+          FirebaseDatabase.instance.ref().child('users');
       ref.push().set({
+        'id':id,
         "name": name,
         "email": email,
-        'password':password,
+        'password': password,
+        'currentLocation': {'latitude': latitude, 'longitude': longitude}
       }).then((_) {
         print('added to database');
       }).catchError((error) {
@@ -170,17 +181,45 @@ class CurrentLocations extends ChangeNotifier {
 }
 
 class GetReceiversName extends ChangeNotifier {
+  //String? sendersName;
   String? receiver;
 
   Future<String> getReceiver(int index) async {
     if (Users.users.isNotEmpty && index >= 0 && index < Users.users.length) {
       // Set the receiver property based on the specified index
-      receiver = Users.users[index].name;
-
+      receiver = Users.users[index].id.toString();
+      print(receiver);
+     // sendersName = Users.users[index].name;
       // Notify listeners that the state has changed
       notifyListeners();
       return 'Please choose a sender';
     }
     return 'Invalid index';
+  }
+}
+
+class SearchUserProvider extends ChangeNotifier {
+  final DatabaseReference _reference =
+      FirebaseDatabase.instance.ref().child('users');
+  List<Users> searchResults = [];
+
+  Future searchUsers(String query) async {
+    _reference.onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        try {
+          if (query.isNotEmpty) {
+            Map<String, dynamic> searchList =
+                jsonDecode(jsonEncode(event.snapshot.value));
+            searchResults =
+                searchList.values.map((item) => Users.fromMap(item)).toList();
+            notifyListeners();
+            print('searchLists ${searchResults}');
+            //return searchResults; // Return the matching users list
+          }
+        } catch (error) {
+          print("Error searching users: $error");
+        }
+      }
+    });
   }
 }

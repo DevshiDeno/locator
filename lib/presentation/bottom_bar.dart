@@ -5,8 +5,7 @@ import 'package:locator/presentation/Home.dart';
 import 'package:locator/presentation/Notifications.dart';
 
 class Home extends StatefulWidget {
-  const Home({super.key});
-
+   const Home({super.key,});
   @override
   State<Home> createState() => _HomeState();
 }
@@ -14,6 +13,7 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   var currentIndex = 0;
   var indexs;
+
   @override
   Widget build(BuildContext context) {
     Size size = MediaQuery.of(context).size;

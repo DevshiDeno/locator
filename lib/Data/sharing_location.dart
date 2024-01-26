@@ -17,7 +17,7 @@ class ShareLocation{
   });
   factory ShareLocation.fromMap(Map<String,dynamic> data){
     return ShareLocation(
-        sender: data['name'],
+        sender: data['sendersName'],
         receiver: data['receiver'],
         message: data['message'],
         currentLocation: Location.fromMap(data['currentLocation'] ?? {}),

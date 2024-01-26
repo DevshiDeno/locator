@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -23,6 +25,8 @@ class _SignUpState extends State<SignUp> {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<CurrentLocations>(context, listen: false);
+    final userProvider=Provider.of<CurrentUser>(context,listen: false);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Account'),
@@ -90,11 +94,16 @@ class _SignUpState extends State<SignUp> {
                                 actions: [
                                   TextButton(
                                     onPressed: () async {
+                                      String id =await userProvider.getCurrentUserId();
+                                      Position userPosition =await provider.determinePosition();
                                       await provider.newUser(
                                         context: context,
+                                        id:id,
                                         name: _usernameController.text,
                                         email: _emailController.text,
                                         password: _passwordController.text,
+                                        latitude: userPosition.latitude,
+                                        longitude: userPosition.longitude,
                                       );
                                       setState(() {
                                         _usernameController.text = '';

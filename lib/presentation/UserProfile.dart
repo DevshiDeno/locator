@@ -6,7 +6,7 @@ class Profile extends StatelessWidget {
   final String user;
   final String currentLocation;
   final String prevLocation;
-  final double id;
+  final String id;
   const Profile({super.key, required this.user, required this.currentLocation, required this.id, required this.prevLocation});
 
   @override
@@ -109,7 +109,7 @@ class Profile extends StatelessWidget {
                           borderRadius: BorderRadius.horizontal(
                               right: Radius.circular(16),
                               left: Radius.circular(16))),
-                      child: Center(child: Text(id.toString(),
+                      child: Center(child: Text(id,
                         style: TextStyle(fontSize: 15,
                             color: Colors.black,
                             decoration: TextDecoration.none

@@ -23,31 +23,30 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  int selectedIndex = 0;
   late String receiver;
   LatLng? currentPosition;
   GoogleMapController? mapController;
+  final TextEditingController _controller = TextEditingController();
   late BitmapDescriptor customMarker;
   String? address;
   String? prev;
   late LatLng newPosition;
-  late TextEditingController controller;
+  final TextEditingController controller = TextEditingController();
   Set<Marker> markers = {};
   List<Users> filteredUsers = [];
+  List<Users> matchingUsers = [];
   final DatabaseReference _reference =
-      FirebaseDatabase.instance.ref().child('users');
-int _currentIndex=0;
-  final List<Widget> _screens = [
-    MyHomePage(),
-    Messages(),
-  ];
+  FirebaseDatabase.instance.ref().child('users');
+
   Future<String> getAddressFromLatLng(position) async {
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(
+      List<Placemark> placeMarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
-      if (placemarks.isNotEmpty) {
-        return placemarks[0].name ?? "Unknown Place";
+      if (placeMarks.isNotEmpty) {
+        return placeMarks[0].name ?? "Unknown Place";
       } else {
         return "No address information found";
       }
@@ -63,12 +62,13 @@ int _currentIndex=0;
         try {
           // Assuming User.fromMap accepts List<dynamic>
           Map<String, dynamic> dataList =
-              jsonDecode(jsonEncode(event.snapshot.value));
+          jsonDecode(jsonEncode(event.snapshot.value));
           List<Users> users =
-              dataList.values.map((item) => Users.fromMap(item)).toList();
+          dataList.values.map((item) => Users.fromMap(item)).toList();
           setState(() {
             Users.users = users;
-            markers = Set.from(Users.users.map((user) => Marker(
+            markers = Set.from(Users.users.map((user) =>
+                Marker(
                   markerId: MarkerId(user.name),
                   position: user.currentLocation.toLatLng(),
                   infoWindow: InfoWindow(title: user.name),
@@ -96,50 +96,62 @@ int _currentIndex=0;
     });
   }
 
-  Future<void> selectedItem(int index) async {
-    if (Users.users.isNotEmpty && index >= 0 && index < Users.users.length) {
-      LatLng location = Users.users[index].currentLocation.toLatLng();
+  Future<void> selectedItem(index, GoogleMapController? mapController) async {
+    LatLng location = Users.users[index].currentLocation.toLatLng();
+    try {
+      List<Placemark> placeMarks = await placemarkFromCoordinates(
+        location.latitude,
+        location.longitude,
+      );
 
-      try {
-        List<Placemark> placemarks = await placemarkFromCoordinates(
-          location.latitude,
-          location.longitude,
-        );
+      address = placeMarks.isNotEmpty
+          ? placeMarks[0].thoroughfare ?? "Unknown Place"
+          : "Unknown Place";
 
-        address = placemarks.isNotEmpty
-            ? placemarks[0].thoroughfare ?? "Unknown Place"
-            : "Unknown Place";
+      print("Address: $address");
 
-        print("Address: $address");
+      CameraPosition position = CameraPosition(
+        target: location,
+        zoom: 16,
+      );
 
-        CameraPosition position = CameraPosition(
-          target: location,
-          zoom: 12,
-        );
-
-        setState(() {
-          currentPosition = location;
-          mapController
-              ?.animateCamera(CameraUpdate.newCameraPosition(position));
-          markers = markers;
-        });
-      } catch (e) {
-        print("Error getting address: $e");
-      }
+      setState(() {
+        currentPosition = location;
+        mapController?.animateCamera(CameraUpdate.newCameraPosition(position));
+        markers = markers;
+      });
+    } catch (e) {
+      print("Error getting address: $e");
     }
   }
 
   @override
   void initState() {
-    controller = TextEditingController();
     super.initState();
     _loadUsers();
   }
 
   @override
+  void dispose() {
+    super.dispose();
+    _controller.dispose();
+    controller.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    var we = MediaQuery.of(context).size.width;
-    var he = MediaQuery.of(context).size.height;
+    final searchProvider =
+    Provider.of<SearchUserProvider>(context, listen: false);
+    final locationProvider =
+    Provider.of<GetReceiversName>(context, listen: false);
+    var we = MediaQuery
+        .of(context)
+        .size
+        .width;
+    var he = MediaQuery
+        .of(context)
+        .size
+        .height;
     return Scaffold(
       body: Stack(
         children: [
@@ -160,12 +172,11 @@ int _currentIndex=0;
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: Container(
-                // color: Colors.lightGreenAccent,
                 width: we,
-                height: he * 0.1,
+                // height: he * 0.1,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  // crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(8.0),
@@ -174,17 +185,119 @@ int _currentIndex=0;
                           radius: 20,
                           child: IconButton(
                               onPressed: () async {
-                               try {
+                                try {
                                   await FirebaseAuth.instance.signOut();
                                   Navigator.pushReplacement(
                                     context,
-                                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                                    MaterialPageRoute(
+                                        builder: (context) => LoginScreen()),
                                   );
-                                }catch(e){
-                                 print(e);
-                               }
+                                } catch (e) {
+                                  print(e);
+                                }
                               },
                               icon: const Icon(Icons.logout_rounded))),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          //  color: Colors.red,
+                            borderRadius: BorderRadius.circular(16)),
+                        width: 200,
+                        // height: 300,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          // mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 200,
+                              height: 45,
+                              //color: Colors.blue,
+
+                              child: TextField(
+                                maxLines: 1,
+                                onChanged: (query) async {
+                                  try {
+                                    await searchProvider.searchUsers(query);
+                                  } catch (e) {
+                                    print(e);
+                                  }
+                                  setState(() {
+                                    matchingUsers = searchProvider.searchResults
+                                        .where((user) =>
+                                        user.name
+                                            .toLowerCase()
+                                            .contains(query.toLowerCase()))
+                                        .toList();
+                                  });
+                                },
+                                controller: _controller,
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                      vertical: 5, horizontal: 10),
+                                  // Adjust padding
+                                  hintText: 'Search',
+                                  // suffixIcon: IconButton(
+                                  //     onPressed: () async {
+                                  //       String searched = _controller.text;
+                                  //       await searchProvider
+                                  //           .searchUsers(searched);
+                                  //     },
+                                  //     icon: Icon(Icons.search))
+                                ),
+                              ),
+                            ),
+                            if (matchingUsers.isNotEmpty)
+                              Container(
+                                  width: 200,
+                                  height: 100,
+                                  color: Colors.white60,
+                                  child: ListView.builder(
+                                      itemCount: matchingUsers.length,
+                                      itemBuilder: (context, index) {
+                                        final searchedUser =
+                                        matchingUsers[index];
+                                        return GestureDetector(
+                                          onTap: () {
+                                            selectedItem(index, mapController);
+                                            FocusScope.of(context).unfocus();
+                                            setState(() {
+                                              matchingUsers.clear();
+                                              _controller.text = '';
+                                            });
+                                          },
+                                          child: ListTile(
+                                            title: Text(searchedUser.name),
+                                            subtitle: FutureBuilder(
+                                                future: getAddressFromLatLng(
+                                                    searchedUser.currentLocation
+                                                        .toLatLng()),
+                                                builder:
+                                                    (context, addressSnapshot) {
+                                                  if (addressSnapshot
+                                                      .connectionState ==
+                                                      ConnectionState.waiting) {
+                                                    return const Center(
+                                                        child:
+                                                        CircularProgressIndicator());
+                                                  } else if (addressSnapshot
+                                                      .hasError) {
+                                                    return Text(
+                                                        'Error: ${addressSnapshot
+                                                            .error}');
+                                                  } else {
+                                                    return Text(
+                                                        addressSnapshot.data!);
+                                                  }
+                                                }),
+                                          ),
+                                        );
+                                      }))
+                          ],
+                        ),
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.all(8.0),
@@ -195,7 +308,7 @@ int _currentIndex=0;
                               onPressed: () {
                                 shareLocation(context);
                               },
-                              icon: Icon(Icons.share_location_rounded))),
+                              icon: const Icon(Icons.share_location_rounded))),
                     ),
                   ],
                 ),
@@ -259,12 +372,13 @@ int _currentIndex=0;
                 decoration: BoxDecoration(
                     color: Colors.white70,
                     borderRadius: BorderRadius.circular(12)
-                    //color: const Color.fromRGBO(255, 255, 255, 0.5),
-                    ),
+                  //color: const Color.fromRGBO(255, 255, 255, 0.5),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   // mainAxisSize: MainAxisSize.min,
                   children: [
+                    //  Center(child: Text("Sharing History")),
                     ListTile(
                       title: Container(
                         width: we,
@@ -302,23 +416,28 @@ int _currentIndex=0;
                     SizedBox(
                       height: he * 0.24,
                       width: we,
-                      child: ListView.builder(
+                      child: filteredUsers.isEmpty
+                          ? Center(
+                        child: Text(
+                          'Add people to share location with',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      )
+                          : ListView.builder(
                         itemCount: filteredUsers.length,
                         itemBuilder: (context, index) {
                           final user = filteredUsers[index];
-                          return Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: GestureDetector(
-                              onTap: () async {
-                                final provider = Provider.of<GetReceiversName>(
-                                    context,
-                                    listen:
-                                        false); //zooms to the specific location
-                                await selectedItem(index);
-                                await provider.getReceiver(index);
-                              },
-                              child: buildRow(we, user, context),
-                            ),
+                          return GestureDetector(
+                            onTap: () async {
+                              setState(() {
+                                selectedIndex = index;
+                              });
+                              //zooms to the specific location
+                              await selectedItem(index, mapController);
+                              await locationProvider.getReceiver(index);
+                            },
+                            child: buildRow(
+                                we, user, context, selectedIndex, index),
                           );
                         },
                       ),
@@ -333,82 +452,97 @@ int _currentIndex=0;
     );
   }
 
-  Row buildRow(double we, Users user, BuildContext context) {
-    return Row(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(2.0),
-          child: CircleAvatar(
-            radius: 20,
-            child: Image.network(
-              "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=388&q=80",
-              fit: BoxFit.cover,
-            ),
-          ),
+  Widget buildRow(double we, Users user, context, int index,
+      int selectedIndex) {
+    Color normalColor = Colors.white60;
+    Color selectedColor = Colors.lightGreenAccent;
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Container(
+       // padding: EdgeInsets.all(6),
+        decoration: BoxDecoration(
+            color: index == selectedIndex ? selectedColor : normalColor,
+            borderRadius: BorderRadius.circular(16)
         ),
-        Container(
-          width: we * 0.45,
-          height: 60,
-          child: Center(
-            child: ListTile(
-              title: Text(
-                user.name,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(2.0),
+              child: CircleAvatar(
+                radius: 20,
+                child: Image.network(
+                  "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=388&q=80",
+                  fit: BoxFit.cover,
                 ),
               ),
-              subtitle: FutureBuilder(
-                future: getAddressFromLatLng(user.currentLocation),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Text("Loading...");
-                  } else if (snapshot.hasError) {
-                    return Text("Error: ${snapshot.error}");
-                  } else {
-                    return Text(snapshot.data ?? "Unknown Place");
-                  }
-                },
+            ),
+            Container(
+              width: we * 0.45,
+              height: 60,
+              child: Center(
+                child: ListTile(
+                  title: Text(
+                    user.name,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: FutureBuilder(
+                    future: getAddressFromLatLng(user.currentLocation),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Text("Loading...");
+                      } else if (snapshot.hasError) {
+                        return Text("Error: ${snapshot.error}");
+                      } else {
+                        return Text(snapshot.data ?? "Unknown Place");
+                      }
+                    },
+                  ),
+                ),
               ),
             ),
-          ),
+            Container(
+              width: 35,
+              height: 35,
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30), color: Colors.white70),
+              child: const Center(
+                child: Icon(Icons.battery_2_bar),
+              ),
+            ),
+            SizedBox(width: we * 0.03),
+            Container(
+              width: 35,
+              height: 35,
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30), color: Colors.white70),
+              child: Center(
+                  child: IconButton(
+                    onPressed: () async {
+                      String current =
+                      await getAddressFromLatLng(user.currentLocation.toLatLng());
+                      String prev =
+                      await getAddressFromLatLng(
+                          user.previousLocation.toLatLng());
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  Profile(
+                                    user: user.name,
+                                    currentLocation: current,
+                                    id: user.id,
+                                    prevLocation: prev,
+                                  )));
+                    },
+                    icon: Icon(Icons.send_and_archive_sharp),
+                  )),
+            ),
+          ],
         ),
-        Container(
-          width: 35,
-          height: 35,
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30), color: Colors.white70),
-          child: const Center(
-            child: Icon(Icons.battery_2_bar),
-          ),
-        ),
-        SizedBox(width: we * 0.03),
-        Container(
-          width: 35,
-          height: 35,
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30), color: Colors.white70),
-          child: Center(
-              child: IconButton(
-            onPressed: () async {
-              String current =
-                  await getAddressFromLatLng(user.currentLocation.toLatLng());
-              String prev =
-                  await getAddressFromLatLng(user.previousLocation.toLatLng());
-              Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => Profile(
-                            user: user.name,
-                            currentLocation: current,
-                            id: user.id,
-                            prevLocation: prev,
-                          )));
-            },
-            icon: Icon(Icons.send_and_archive_sharp),
-          )),
-        ),
-      ],
+      ),
     );
   }
 }
