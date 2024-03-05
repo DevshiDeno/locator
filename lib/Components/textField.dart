@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 
 class MyTextField extends StatelessWidget {
   final TextEditingController controller;
-  final String hintText;
+  final String labelText;
   final bool obscureText;
   final Function(String value) onChanged;
 
   const MyTextField({
-    Key? key,
+    super.key,
     required this.controller,
-    required this.hintText,
+    required this.labelText,
     required this.obscureText,
     required this.onChanged,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -30,35 +30,46 @@ class MyTextField extends StatelessWidget {
         }
         return null;
       },
-      decoration: InputDecoration(
-        // Your decoration propertiesflutter pub get
-
-        hintText: hintText,
-      ),
+      decoration:InputDecoration(
+          enabledBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.grey.shade400),
+          ),
+          fillColor: Colors.grey.shade200,
+          filled: true,
+          labelText: labelText,
+          hintStyle: TextStyle(color: Colors.black)),
     );
   }
 }
 
-class MyPasswordTextField extends StatelessWidget {
+class MyPasswordTextField extends StatefulWidget {
   final TextEditingController controller;
-  final String hintText;
-  final bool obscureText;
+  final String labelText;
   final Function(String value) onChanged;
 
   const MyPasswordTextField({
-    Key? key,
+    super.key,
     required this.controller,
-    required this.hintText,
-    required this.obscureText,
+    required this.labelText,
     required this.onChanged,
-  }) : super(key: key);
+  });
+
+  @override
+  _MyPasswordTextFieldState createState() => _MyPasswordTextFieldState();
+}
+
+class _MyPasswordTextFieldState extends State<MyPasswordTextField> {
+  bool _obscureText = true;
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      onChanged: onChanged,
+      controller: widget.controller,
+      obscureText: _obscureText,
+      onChanged: widget.onChanged,
       validator: (value) {
         if (value!.isEmpty) {
           return 'Please enter a password';
@@ -69,7 +80,24 @@ class MyPasswordTextField extends StatelessWidget {
         return null;
       },
       decoration: InputDecoration(
-        hintText: hintText,
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.white),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        fillColor: Colors.grey.shade200,
+        filled: true,
+        labelText: widget.labelText,
+        suffixIcon: IconButton(
+          onPressed: () {
+            setState(() {
+              _obscureText = !_obscureText;
+            });
+          },
+          icon: Icon(_obscureText ? Icons.visibility : Icons.visibility_off),
+        ),
+          hintStyle: const TextStyle(color: Colors.black),
       ),
     );
   }
