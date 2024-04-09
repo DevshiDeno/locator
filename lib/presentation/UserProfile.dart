@@ -5,7 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter_platform_interface/src/types/location.dart';
 import 'package:locator/Components/ListsTiles.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:locator/Components/SnackBar.dart';

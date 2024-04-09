@@ -398,7 +398,7 @@ class RequestedLocations extends StatelessWidget {
                       print(e);
                     }
                   }else{
-                    showSnackBar(context,'Request Expired');
+                    showSnackBarWarning(context,'Request Expired');
                   }
 
                 },

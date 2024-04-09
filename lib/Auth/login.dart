@@ -8,8 +8,6 @@ import 'package:locator/Components/Buttons.dart';
 import 'package:locator/Components/SnackBar.dart';
 import 'package:locator/Components/textField.dart';
 import 'package:locator/Provider/Provider.dart';
-import 'package:locator/presentation/Home.dart';
-import 'package:locator/presentation/bottom_bar.dart';
 import 'package:lottie/lottie.dart';
 import 'package:provider/provider.dart';
 

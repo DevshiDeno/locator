@@ -15,6 +15,8 @@ import 'package:locator/presentation/UserProfile.dart';
 import 'package:provider/provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:http/http.dart' as http;
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
@@ -31,7 +33,7 @@ class _MyHomePageState extends State<MyHomePage> {
   LatLng currentPosition = const LatLng(-1.286389, 36.817223);
   GoogleMapController? mapController;
   final TextEditingController _controller = TextEditingController();
-  late BitmapDescriptor markerIcon;
+  BitmapDescriptor? customMarker;
   String? address;
   String? prev;
   final TextEditingController controller = TextEditingController();
@@ -40,11 +42,10 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Users> filteredUsers = [];
   Users? userName;
   Set<Marker> _markers = {};
+
   List<Users> filterUser = [];
   StreamSubscription? _users;
   StreamSubscription? _friends;
-  GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
-      GlobalKey<ScaffoldMessengerState>();
 
   Future<String> getAddressFromLatLng(position) async {
     try {
@@ -141,34 +142,23 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<Position> determinePosition() async {
-    // Check if position is not yet determined
     bool serviceEnabled;
     LocationPermission permission;
-
-    // Test if location services are enabled.
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      // Handle case where location services are disabled
       return Future.error('Location services are disabled.');
     }
-
-    // Check and request location permissions
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        // Handle case where location permissions are denied
         return Future.error('Location permissions are denied');
       }
     }
-
     if (permission == LocationPermission.deniedForever) {
-      // Handle case where location permissions are permanently denied
       return Future.error(
           'Location permissions are permanently denied, we cannot request permissions.');
     }
-
-    // Fetch the user's current position
     Position position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.bestForNavigation,
     );
@@ -180,26 +170,41 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> mergeMarkers() async {
     Set<Marker> mergedMarkers = Set.from(_markers); // Copy existing markers
-    await Future.forEach(Friends.friends, (friend) async {
-      if (friend.request == true &&
-          (currentUserId == friend.receiverId ||
-              friend.senderId == currentUserId)) {
-        mergedMarkers.add(
-          Marker(
-            markerId: MarkerId(
-                currentUser == friend.name ? friend.senderName : friend.name),
-            position: friend.currentLocation.toLatLng(),
-            infoWindow: InfoWindow(
-                title: currentUser == friend.name
+        try{
+      await Future.forEach(Friends.friends, (friend) async {
+        Uint8List bytes = (await NetworkAssetBundle(Uri.parse(friend.imageUrl))
+                .load(friend.imageUrl))
+            .buffer
+            .asUint8List();
+        setState(() {
+          customMarker = BitmapDescriptor.fromBytes(bytes);
+        });
+        if (friend.request == true &&
+            (currentUserId == friend.receiverId ||
+                friend.senderId == currentUserId)) {
+          mergedMarkers.add(
+            Marker(
+                markerId: MarkerId(currentUser == friend.name
                     ? friend.senderName
                     : friend.name),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose),
-            // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
-          ),
-        );
-      }
-    });
+                position: friend.currentLocation.toLatLng(),
+                infoWindow: InfoWindow(
+                    title: currentUser == friend.name
+                        ? friend.senderName
+                        : friend.name),
+                icon:
+               // customMarker!
+
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose
+                // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
+                ),
+            )
+          );
+        }
+      });
+    }catch(e){
+          print(e);
+        }
     await Future.forEach(Users.users, (user) async {
       if (currentUser == user.name) {
         mergedMarkers.add(
@@ -211,7 +216,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   BitmapDescriptor.hueGreen),
               position: user.currentLocation.toLatLng()),
         );
-        print("Marker Added");
       }
     });
     setState(() {
@@ -221,36 +225,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // Future<BitmapDescriptor> getMarkerIconFromUrl(String imageUrl) async {
   //   final cacheManager = DefaultCacheManager();
-  //   try {
-  //     final file = await cacheManager.getSingleFile(imageUrl);
-  //     final bytes = await file.readAsBytes();
   //
-  //     // 1. Edit image for marker shape
-  //     final imageEditor = ImageEditor(memoryBytes: bytes);
-  //     double markerWidth = 100; // Adjust width and height as needed for marker size
-  //     double markerHeight = 100;
-  //     final points = [
-  //       Offset(markerWidth / 2, 0.0),
-  //       Offset(0.0, markerHeight),
-  //       Offset(markerWidth, markerHeight),
-  //     ];
-  //     final paint = Paint()..color = Colors.red; // Adjust color as needed
-  //     final path = Path()..addPolygon(points);
-  //     final editedImage = await imageEditor
-  //         .drawImage(CopyImage(imageEditor.fullImage.width, imageEditor.fullImage.height), path: path, blendMode: BlendMode.srcIn);
-  //
-  //     // 2. Resize the edited image
-  //     final resizedImage = await editedImage.resize(width: 50, height: 50);
-  //
-  //     // 3. Encode the resized image
-  //     final resizedBytes = await resizedImage.readAsBytes();
-  //
-  //     return BitmapDescriptor.fromBytes(resizedBytes);
-  //   } catch (e) {
-  //     // Handle error gracefully (e.g., display a placeholder icon)
-  //     print(e);
-  //     return BitmapDescriptor.defaultMarker; // Or a custom placeholder icon
-  //   }
   // }  @override
   @override
   void initState() {
@@ -578,7 +553,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   IconButton(
                       onPressed: () async {
                         try {
-                          print(filteredUsers);
                           Users users = filteredUsers
                               .firstWhere((user) => currentUser == user.name);
                           LatLng location = users.currentLocation.toLatLng();
