@@ -3,13 +3,19 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
 
     <application
         android:label="Find me!"
         android:name="${applicationName}"
         android:icon="@mipmap/find">
         <meta-data android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBCGc5yRPH4UQUISzl6wH_IkSpRm2rGQ3k"/>
+            android:value="AIzaSyBoITIzaKF1njfhL3AVj_yNGN3XpzpcHHA"/>
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-9922819544973761~9473336150"/>
+
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

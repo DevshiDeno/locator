@@ -146,7 +146,7 @@ class _FriendState extends State<Friend> {
                           return Padding(
                             padding: const EdgeInsets.all(8.0),
                             child: Container(
-                                width: we * 0.9,
+                                width: we * 0.85,
                                 height: 70,
                                 decoration: const BoxDecoration(
                                   color: Colors.white,
@@ -164,7 +164,7 @@ class _FriendState extends State<Friend> {
                                       imageUrl: friend.imageUrl,
                                       imageBuilder: (context, imageProvider) =>
                                           CircleAvatar(
-                                        radius: 30,
+                                        radius: 25,
                                         backgroundImage: imageProvider,
                                       ),
                                       placeholder: (context, url) =>
@@ -182,7 +182,7 @@ class _FriendState extends State<Friend> {
                                         style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold)),
-                                    SizedBox(width: we * 0.33),
+                                    SizedBox(width: we * 0.30),
                                       const Text('Friends',
                                           style: TextStyle(
                                               fontSize: 12,

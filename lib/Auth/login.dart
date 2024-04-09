@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:locator/Auth/Create_account.dart';
+import 'package:locator/Auth/resetPassword.dart';
 import 'package:locator/Components/Buttons.dart';
 import 'package:locator/Components/SnackBar.dart';
 import 'package:locator/Components/textField.dart';
@@ -11,6 +12,8 @@ import 'package:locator/presentation/Home.dart';
 import 'package:locator/presentation/bottom_bar.dart';
 import 'package:lottie/lottie.dart';
 import 'package:provider/provider.dart';
+
+import '../presentation/splashScreen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -44,18 +47,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       body: Stack(
         children: [
-           Positioned(
+          Positioned(
               left: 50,
               right: 50,
               top: 90,
-              child:Container(
-                width:150,
-                height:150,
-                child: Lottie.asset(
-                    'assets/Icon_location.json'
-                ),
-              )
-          ),
+              child: Container(
+                width: 150,
+                height: 150,
+                child: Lottie.asset('assets/Icon_location.json'),
+              )),
           Positioned(
             left: 60,
             right: 40,
@@ -64,10 +64,10 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Welcome back!',
+                  'Welcome!',
                   style: TextStyle(
                     color: Colors.grey[700],
-                    fontSize: 20,
+                    fontSize: 30,
                   ),
                 ),
               ],
@@ -105,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 16.0),
                           MyPasswordTextField(
                             controller: _passwordController,
-                           // obscureText: true,
+                            // obscureText: true,
                             labelText: 'password',
                             onChanged: (String value) {
                               _passwordController.value;
@@ -115,14 +115,26 @@ class _LoginScreenState extends State<LoginScreen> {
                           Padding(
                             padding:
                                 const EdgeInsets.symmetric(horizontal: 25.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Text(
-                                  'Forgot Password?',
-                                  style: TextStyle(color: Colors.grey[600]),
+                            child: GestureDetector(
+                              onTap: () async {
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            PasswordResetPage()));
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      'Forgot Password?',
+                                      style: TextStyle(color: Colors.grey[600]),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                           const SizedBox(height: 10.0),
@@ -144,16 +156,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                 await provider.updateLocation(
                                     currentId: userCredential.user!.uid,
                                     context: context);
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const SplashScreen()),
+                                );
                               } catch (e) {
+                                print(e);
                                 if (e is FirebaseAuthException &&
-                                    e.code == 'wrong-password') {
+                                    e.code == 'invalid-credential') {
                                   // Show SnackBar with error message
                                   showSnackBarError(
-                                      context, 'User already exists');
+                                      context, 'Wrong Password');
                                 } else if (e is FirebaseAuthException &&
                                     e.code == 'user-not-found') {
                                   // Show SnackBar with error message
-                                  showSnackBarError(context, 'Incorrect email');
+                                  showSnackBarError(context, "User with this email doesn't exist.");
                                 } else {
                                   showSnackBarError(context,
                                       'An error occurred. Please try again.');

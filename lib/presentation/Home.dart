@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:locator/Components/Buttons.dart';
+import 'package:locator/Components/SnackBar.dart';
 import 'package:locator/Components/showDialog.dart';
 import 'package:locator/Model/user_details.dart';
 import 'package:locator/Provider/Provider.dart';
@@ -14,11 +17,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, this.polylines, this.user, this.markers});
-
-  final Set<Marker>? markers;
-  final String? user;
-  final Set<Polyline>? polylines;
+  const MyHomePage({super.key});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -28,10 +27,11 @@ class _MyHomePageState extends State<MyHomePage> {
   bool isFriend = false;
   int selectedIndex = 0;
   String currentUser = 'user';
+  String? currentUserId;
   LatLng currentPosition = const LatLng(-1.286389, 36.817223);
   GoogleMapController? mapController;
   final TextEditingController _controller = TextEditingController();
-  late BitmapDescriptor customMarker;
+  late BitmapDescriptor markerIcon;
   String? address;
   String? prev;
   final TextEditingController controller = TextEditingController();
@@ -40,8 +40,12 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Users> filteredUsers = [];
   Users? userName;
   Set<Marker> _markers = {};
-  Set<Polyline> _polyLines = {};
-  List<Users> filterUser=[];
+  List<Users> filterUser = [];
+  StreamSubscription? _users;
+  StreamSubscription? _friends;
+  GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
   Future<String> getAddressFromLatLng(position) async {
     try {
       List<Placemark> placeMarks = await placemarkFromCoordinates(
@@ -61,10 +65,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _loadFriends() async {
     final userProvider = await Provider.of<CurrentUser>(context, listen: false)
-        .getCurrentUserDisplayName();
+        .getCurrentUserId();
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('friends');
-    reference.onValue.listen((event) {
+    _friends = reference.onValue.listen((event) {
       if (event.snapshot.value != null) {
         try {
           Map<String, dynamic> dataList =
@@ -73,13 +77,14 @@ class _MyHomePageState extends State<MyHomePage> {
               dataList.values.map((item) => Friends.fromMap(item)).toList();
           setState(() {
             Friends.friends = users;
-            currentUser = userProvider;
+            currentUserId = userProvider;
             filteredFriends = Friends.friends
                 .where((friend) =>
-                    friend.request == false &&
-                    (currentUser == friend.name ||
-                        friend.senderName == currentUser))
+                    friend.request == true &&
+                    (currentUserId == friend.receiverId ||
+                        friend.senderId == currentUserId))
                 .toList();
+            mergeMarkers();
           });
         } catch (e) {
           print('Error updating state: $e');
@@ -93,7 +98,7 @@ class _MyHomePageState extends State<MyHomePage> {
         .getCurrentUserDisplayName();
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('users');
-    reference.onValue.listen((event) {
+    _users = reference.onValue.listen((event) {
       if (event.snapshot.value != null) {
         try {
           Map<String, dynamic> dataList =
@@ -116,21 +121,21 @@ class _MyHomePageState extends State<MyHomePage> {
   void filterFriends(String category) {
     setState(() {
       if (category == "Pending") {
-        // Display all users
         filteredFriends = Friends.friends
             .where((friend) =>
                 friend.request == false &&
-                (currentUser == friend.name ||
-                    friend.senderName == currentUser))
+                (currentUserId == friend.receiverId ||
+                    friend.senderId == currentUserId))
             .toList();
       } else {
         // Filter users based on the selected category
         filteredFriends = Friends.friends
             .where((friend) =>
                 friend.request == true &&
-                (currentUser == friend.name ||
-                    friend.senderName == currentUser))
+                (currentUserId == friend.receiverId ||
+                    friend.senderId == currentUserId))
             .toList();
+        // print(filteredFriends);
       }
     });
   }
@@ -165,7 +170,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // Fetch the user's current position
     Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.medium,
+      desiredAccuracy: LocationAccuracy.bestForNavigation,
     );
     setState(() {
       currentPosition = LatLng(position.latitude, position.longitude);
@@ -173,33 +178,95 @@ class _MyHomePageState extends State<MyHomePage> {
     return position;
   }
 
-  void mergeMarkers() {
+  Future<void> mergeMarkers() async {
     Set<Marker> mergedMarkers = Set.from(_markers); // Copy existing markers
-    mergedMarkers.addAll(widget.markers ?? {}); // Add markers from widget
-    mergedMarkers.addAll(Set.from(Friends.friends.map((user) => Marker(
-          markerId: MarkerId(user.name),
-          position: user.currentLocation.toLatLng(),
-          infoWindow: InfoWindow(title: user.name),
-        )))); // Add markers from friends
-    mergedMarkers.addAll(Set.from(Users.users.map((user) => Marker(
-          markerId: MarkerId(user.name),
-          position: user.currentLocation.toLatLng(),
-          infoWindow: InfoWindow(title: user.name),
-        )))); // Add markers from users
-
+    await Future.forEach(Friends.friends, (friend) async {
+      if (friend.request == true &&
+          (currentUserId == friend.receiverId ||
+              friend.senderId == currentUserId)) {
+        mergedMarkers.add(
+          Marker(
+            markerId: MarkerId(
+                currentUser == friend.name ? friend.senderName : friend.name),
+            position: friend.currentLocation.toLatLng(),
+            infoWindow: InfoWindow(
+                title: currentUser == friend.name
+                    ? friend.senderName
+                    : friend.name),
+            icon:
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose),
+            // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
+          ),
+        );
+      }
+    });
+    await Future.forEach(Users.users, (user) async {
+      if (currentUser == user.name) {
+        mergedMarkers.add(
+          Marker(
+              markerId: MarkerId(user.name),
+              infoWindow:
+                  InfoWindow(title: currentUser == user.name ? 'You' : ''),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen),
+              position: user.currentLocation.toLatLng()),
+        );
+        print("Marker Added");
+      }
+    });
     setState(() {
       _markers = mergedMarkers;
     });
   }
 
+  // Future<BitmapDescriptor> getMarkerIconFromUrl(String imageUrl) async {
+  //   final cacheManager = DefaultCacheManager();
+  //   try {
+  //     final file = await cacheManager.getSingleFile(imageUrl);
+  //     final bytes = await file.readAsBytes();
+  //
+  //     // 1. Edit image for marker shape
+  //     final imageEditor = ImageEditor(memoryBytes: bytes);
+  //     double markerWidth = 100; // Adjust width and height as needed for marker size
+  //     double markerHeight = 100;
+  //     final points = [
+  //       Offset(markerWidth / 2, 0.0),
+  //       Offset(0.0, markerHeight),
+  //       Offset(markerWidth, markerHeight),
+  //     ];
+  //     final paint = Paint()..color = Colors.red; // Adjust color as needed
+  //     final path = Path()..addPolygon(points);
+  //     final editedImage = await imageEditor
+  //         .drawImage(CopyImage(imageEditor.fullImage.width, imageEditor.fullImage.height), path: path, blendMode: BlendMode.srcIn);
+  //
+  //     // 2. Resize the edited image
+  //     final resizedImage = await editedImage.resize(width: 50, height: 50);
+  //
+  //     // 3. Encode the resized image
+  //     final resizedBytes = await resizedImage.readAsBytes();
+  //
+  //     return BitmapDescriptor.fromBytes(resizedBytes);
+  //   } catch (e) {
+  //     // Handle error gracefully (e.g., display a placeholder icon)
+  //     print(e);
+  //     return BitmapDescriptor.defaultMarker; // Or a custom placeholder icon
+  //   }
+  // }  @override
   @override
   void initState() {
     super.initState();
     _loadFriends();
     allUsers();
-    _polyLines = widget.polylines ?? {};
+    filterFriends('friends');
     mergeMarkers();
-    determinePosition();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _friends?.cancel();
+    _users?.cancel();
+    mapController!.dispose();
   }
 
   @override
@@ -217,6 +284,7 @@ class _MyHomePageState extends State<MyHomePage> {
         body: Stack(
       children: [
         GoogleMap(
+            cloudMapId: 'cf2bb55d8b44b0bd',
             mapType: MapType.normal,
             zoomControlsEnabled: false,
             onMapCreated: (controller) async {
@@ -226,7 +294,6 @@ class _MyHomePageState extends State<MyHomePage> {
               target: currentPosition,
               zoom: 8.0,
             ),
-            polylines: _polyLines,
             markers: _markers),
         Positioned(
           top: 10,
@@ -245,6 +312,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     padding: const EdgeInsets.all(8.0),
                     child: GestureDetector(
                       onTap: () {
+                        print('Current $userName');
                         if (userName?.id != null) {
                           getAddressFromLatLng(
                                   userName?.currentLocation.toLatLng())
@@ -270,8 +338,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                   content: Text("User not logged In")));
                         }
                       },
-                      child:
-                      CircleAvatar(
+                      child: CircleAvatar(
                         backgroundColor: Colors.blueGrey,
                         radius: 25,
                         child: CachedNetworkImage(
@@ -309,9 +376,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                   await searchProvider.searchUsers(query);
                                   setState(() {
                                     if (query.isEmpty) {
-                                      matchingUsers
-                                          .clear();
-                                      filterUser.clear();// Clear the matchingUsers list
+                                      matchingUsers.clear();
+                                      filterUser
+                                          .clear(); // Clear the matchingUsers list
                                     } else {
                                       matchingUsers = searchProvider
                                           .searchResults
@@ -321,7 +388,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                           .toList();
                                       filterUser = matchingUsers
                                           .where((friend) =>
-                                      !filteredFriends.any((ff) => ff.receiverId == friend.id || ff.senderId == friend.id))
+                                              !filteredFriends.any((ff) =>
+                                                  ff.receiverId == friend.id ||
+                                                  ff.senderId == friend.id))
                                           .toList();
                                     }
                                   });
@@ -430,8 +499,8 @@ class _MyHomePageState extends State<MyHomePage> {
                                                             .unfocus();
                                                       });
                                                     },
-                                                    child:  const Text(
-                                                     // searchedUser.id==
+                                                    child: const Text(
+                                                      // searchedUser.id==
                                                       'Add Friend',
                                                       style: TextStyle(
                                                           fontSize: 12,
@@ -491,7 +560,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: () async {
                   await invitation(context);
                 },
-                icon: const Icon(Icons.share,size: 30,))),
+                icon: const Icon(
+                  Icons.share,
+                  size: 30,
+                ))),
         Positioned(
             left: we * 0.73,
             right: 0,
@@ -505,25 +577,37 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   IconButton(
                       onPressed: () async {
-                        Users users = filteredUsers
-                            .firstWhere((user) => currentUser == user.name);
-                        LatLng location = users.currentLocation.toLatLng();
-                        await getLocationProvider.getCurrentLocations(
-                            location, mapController);
+                        try {
+                          print(filteredUsers);
+                          Users users = filteredUsers
+                              .firstWhere((user) => currentUser == user.name);
+                          LatLng location = users.currentLocation.toLatLng();
+                          await getLocationProvider.getCurrentLocations(
+                              location, mapController);
+                        } catch (e) {
+                          if (e is StateError) {
+                            print(
+                                'No element found in filteredUsers that satisfies the condition');
+                          } else {
+                            print(e);
+                          }
+                        }
                       },
                       icon: const Icon(
                         Icons.location_on,
                         size: 50,
                       )),
-                  Container(
-                    color: Colors.white54,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4.0),
-                      child: Text(currentUser,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20
-                      ),),
+                  Expanded(
+                    child: Container(
+                      color: Colors.white54,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Text(
+                          currentUser,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 20),
+                        ),
+                      ),
                     ),
                   )
                 ],
@@ -556,16 +640,17 @@ class _MyHomePageState extends State<MyHomePage> {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           ElevatedButtons(
-                            text: "Pending",
-                            onPressed: () {
-                              filterFriends('Pending');
-                            },
-                          ),
-                          SizedBox(width: we * 0.01),
-                          ElevatedButtons(
                             text: "Friends",
                             onPressed: () {
                               filterFriends("friends");
+                            },
+                          ),
+                          SizedBox(width: we * 0.01),
+
+                          ElevatedButtons(
+                            text: "Pending",
+                            onPressed: () {
+                              filterFriends('Pending');
                             },
                           ),
                           //const SizedBox(width: 30),
@@ -593,11 +678,8 @@ class _MyHomePageState extends State<MyHomePage> {
                                     await getReceiversName.getReceiver(
                                         index, currentUser);
                                   } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content:
-                                              Text('Friend Request pending')),
-                                    );
+                                    showSnackBarWarning(
+                                        context, 'Friend Request pending');
                                   }
                                 },
                                 child: buildRow(
@@ -639,11 +721,13 @@ class _MyHomePageState extends State<MyHomePage> {
               child: CircleAvatar(
                 radius: 20,
                 child: CachedNetworkImage(
-                  imageUrl: (currentUser == friend.name) ?
-                  (friend.senderImage.isNotEmpty ? friend.senderImage :
-                  'https://source.unsplash.com/user/wsanter') :
-                  (friend.imageUrl.isNotEmpty ? friend.imageUrl :
-                  'https://source.unsplash.com/user/wsanter'),
+                  imageUrl: (currentUser == friend.name)
+                      ? (friend.senderImage.isNotEmpty
+                          ? friend.senderImage
+                          : 'https://source.unsplash.com/user/wsanter')
+                      : (friend.imageUrl.isNotEmpty
+                          ? friend.imageUrl
+                          : 'https://source.unsplash.com/user/wsanter'),
                   imageBuilder: (context, imageProvider) => CircleAvatar(
                     radius: 50,
                     backgroundImage: imageProvider,

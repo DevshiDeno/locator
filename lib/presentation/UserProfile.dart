@@ -1,17 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:locator/Auth/login.dart';
+import 'package:google_maps_flutter_platform_interface/src/types/location.dart';
 import 'package:locator/Components/ListsTiles.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:locator/Components/SnackBar.dart';
+import 'package:locator/Model/user_details.dart';
 import 'package:locator/Provider/Provider.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:locator/presentation/bottom_bar.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class Profile extends StatefulWidget {
   final String user;
@@ -39,28 +42,38 @@ class _ProfileState extends State<Profile> {
   Position? lastPosition;
   List<Position> lastPositionList = [];
   String? _imageUrl;
+  List<Friends> emergencyContacts = [];
+  List<Friends> filteredFriends = [];
+  bool added = false;
+  bool respond = false;
+  final DatabaseReference ref = FirebaseDatabase.instance.ref().child('users');
+  StreamSubscription? _location;
+  StreamSubscription? _friends;
 
-  // Future<void> locationHistory() async {
-  //   final lastPosition = await Geolocator.getLastKnownPosition();
-  //   if (lastPosition != null) {
-  //     final DatabaseReference ref =
-  //         FirebaseDatabase.instance.ref().child('users');
-  //     ref.onValue.listen((event) {
-  //       final data = event.snapshot.value as Map<dynamic, dynamic>?;
-  //
-  //       data?.forEach((key, value) {
-  //         if (value['id'] == currentUser) {
-  //           ref.child(key).update({
-  //             'previousLocation': {
-  //               'latitude': lastPosition.latitude,
-  //               'longitude': lastPosition.longitude,
-  //             },
-  //           });
-  //         }
-  //       });
-  //     });
-  //   }
-  // }
+  Future<void> locationHistory() async {
+    lastPosition = await Geolocator.getLastKnownPosition();
+    if (lastPosition != null) {
+      _location = ref.onValue.listen((event) {
+        final data = event.snapshot.value as Map<dynamic, dynamic>?;
+
+        data?.forEach((key, value) {
+          if (value['id'] == currentUser) {
+            double previousLatitude = value['currentLocation']['latitude'];
+            double previousLongitude = value['currentLocation']['longitude'];
+            if (previousLatitude != lastPosition?.latitude ||
+                previousLongitude != lastPosition?.longitude) {
+              ref.child(key).update({
+                'previousLocation': {
+                  'latitude': lastPosition?.latitude,
+                  'longitude': lastPosition?.longitude,
+                },
+              });
+            }
+          }
+        });
+      });
+    }
+  }
 
   Future<void> uploadImage(File imageFile) async {
     try {
@@ -78,14 +91,12 @@ class _ProfileState extends State<Profile> {
 
       await Provider.of<CurrentUser>(context, listen: false)
           .addProfilePic(currentId, url);
-
-      if (mounted) {
-        setState(() {
-          _imageUrl = url;
-        });
-      }
+      setState(() {
+        _imageUrl = url;
+      });
+      showSnackBar(context, 'Profile Image changed!');
     } catch (e) {
-      print('Error uploading image: $e');
+      showSnackBarError(context, "Error uploading image $e");
     }
   }
 
@@ -111,24 +122,57 @@ class _ProfileState extends State<Profile> {
     });
   }
 
+  Future<void> _loadFriends() async {
+    final userProvider = await Provider.of<CurrentUser>(context, listen: false)
+        .getCurrentUserId();
+    final DatabaseReference reference =
+        FirebaseDatabase.instance.ref().child('friends');
+    _friends = reference.onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        try {
+          Map<String, dynamic> dataList =
+              jsonDecode(jsonEncode(event.snapshot.value));
+          List<Friends> users =
+              dataList.values.map((item) => Friends.fromMap(item)).toList();
+          setState(() {
+            Friends.friends = users;
+            filteredFriends = Friends.friends
+                .where((friend) =>
+                    friend.request == true &&
+                    (userProvider == friend.receiverId ||
+                        friend.senderId == userProvider))
+                .toList();
+          });
+        } catch (e) {
+          print('Error updating state: $e');
+        }
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _imageUrl = widget.imageUrl;
     currentUserId();
-    // locationHistory();
+    locationHistory();
+    _loadFriends();
   }
 
   @override
   void dispose() {
     super.dispose();
-    //  locationHistory();
+    _location?.cancel();
+    _friends?.cancel();
   }
 
   @override
   Widget build(BuildContext context) {
     var we = MediaQuery.of(context).size.width;
     var he = MediaQuery.of(context).size.height;
+    final provider = Provider.of<GoogleSignInProvider>(context, listen: false);
+    final providerSos = Provider.of<ShowNotification>(context, listen: false);
+
     return Scaffold(
       body: Stack(children: [
         Positioned(
@@ -144,11 +188,10 @@ class _ProfileState extends State<Profile> {
               ),
               width: we,
               height: he * 0.08,
-              child: Row(
-
+              child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
+                  Text(
                     'Profile',
                     style: TextStyle(
                         color: Colors.black,
@@ -234,7 +277,7 @@ class _ProfileState extends State<Profile> {
                     Container(
                       width: 100,
                       height: 30,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                           color: Colors.lightGreenAccent,
                           borderRadius: BorderRadius.horizontal(
                               right: Radius.circular(16),
@@ -242,7 +285,7 @@ class _ProfileState extends State<Profile> {
                       child: Center(
                           child: Text(
                         widget.user,
-                        style: TextStyle(
+                        style: const TextStyle(
                             fontSize: 15,
                             color: Colors.black,
                             decoration: TextDecoration.none),
@@ -269,8 +312,9 @@ class _ProfileState extends State<Profile> {
                 padding: const EdgeInsets.all(8.0),
                 child: Container(
                   width: we,
+
                   //height: 180,
-                  decoration: BoxDecoration(color: Colors.white),
+                  decoration: const BoxDecoration(color: Colors.white),
                   child: Column(
                     children: [
                       const ListTiles(
@@ -325,13 +369,112 @@ class _ProfileState extends State<Profile> {
                   padding: const EdgeInsets.all(8.0),
                   child: Material(
                     elevation: 5.0,
-                    shape: CircleBorder(),
+                    shape: const CircleBorder(),
                     shadowColor: Colors.black54,
                     child: CircleAvatar(
                         backgroundColor: Colors.lightGreenAccent,
                         radius: 30,
                         child: IconButton(
-                            onPressed: () {}, icon: Icon(Icons.phone_sharp))),
+                            onPressed: () async {
+                              final userProvider =
+                                  await Provider.of<CurrentUser>(context,
+                                          listen: false)
+                                      .getCurrentUserDisplayName();
+                              String message =
+                                  'Emergency! Help needed at ${widget.currentLocation}';
+                              if (filteredFriends.isNotEmpty) {
+                                showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                          content: SizedBox(
+                                              //height: he * 0.3,
+                                              width: we * 0.8,
+                                              // color: Colors.lightGreen,
+                                              child: ListView.builder(
+                                                  shrinkWrap: true,
+                                                  // Use shrinkWrap property
+                                                  itemCount:
+                                                      filteredFriends.length,
+                                                  itemBuilder:
+                                                      (context, index) {
+                                                    final contact =
+                                                        filteredFriends[index];
+                                                    return ListTile(
+                                                      title: Text(
+                                                        widget.user ==
+                                                                contact.name
+                                                            ? contact.senderName
+                                                            : contact.name,
+                                                        style: const TextStyle(
+                                                          fontSize: 20,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      trailing: TextButton(
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            if (emergencyContacts
+                                                                .contains(
+                                                                    contact)) {
+                                                              // If 'contact' is already in 'emergencyContacts', remove it and set 'added' to false
+                                                              emergencyContacts
+                                                                  .remove(
+                                                                      contact);
+                                                              added = false;
+                                                            } else {
+                                                              // If 'contact' is not in 'emergencyContacts', add it and set 'added' to true
+                                                              emergencyContacts
+                                                                  .add(contact);
+                                                              added = true;
+                                                            }
+                                                          });
+                                                        },
+                                                        child: added
+                                                            ? const Icon(
+                                                                Icons.check_box)
+                                                            : const Icon(Icons
+                                                                .check_box_outline_blank),
+                                                      ),
+                                                    );
+                                                  })),
+                                          actions: [
+                                            TextButton(
+                                                onPressed: () {
+                                                  Navigator.pop(context);
+                                                },
+                                                child: const Text('cancel')),
+                                            if (filteredFriends.isNotEmpty)
+                                              TextButton(
+                                                  onPressed: () {
+                                                    if (emergencyContacts
+                                                        .isNotEmpty) {
+                                                      providerSos.sendSos(
+                                                          userProvider,
+                                                          emergencyContacts,
+                                                          message,
+                                                          lastPosition!
+                                                              .latitude,
+                                                          lastPosition!
+                                                              .longitude,
+                                                          DateTime.now(),
+                                                          context);
+                                                      setState(() {
+                                                        emergencyContacts
+                                                            .clear();
+                                                        added = false;
+                                                      });
+                                                    }
+                                                  },
+                                                  child: const Text('Send'))
+                                          ],
+                                        ));
+                              } else {
+                                showSnackBarWarning(context,
+                                    "You current Have no Friends to send an SOS message to!!");
+                              }
+                            },
+                            icon: const Icon(Icons.sos_outlined))),
                   ),
                 ),
                 Container(
@@ -345,18 +488,9 @@ class _ProfileState extends State<Profile> {
                   child: Center(
                       child: GestureDetector(
                     onTap: () async {
-                      try {
-                        await FirebaseAuth.instance.signOut();
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const LoginScreen()),
-                        );
-                      } catch (e) {
-                        print('Error logging out: $e');
-                      }
+                      await provider.signOut(context);
                     },
-                    child: Text(
+                    child: const Text(
                       "Log Out",
                       style: TextStyle(
                           fontSize: 15,
@@ -369,14 +503,14 @@ class _ProfileState extends State<Profile> {
                   padding: const EdgeInsets.all(8.0),
                   child: Material(
                     elevation: 5.0,
-                    shape: CircleBorder(),
+                    shape: const CircleBorder(),
                     shadowColor: Colors.black54,
                     child: CircleAvatar(
                         backgroundColor: Colors.lightGreenAccent,
                         radius: 30,
                         child: IconButton(
                             onPressed: () {},
-                            icon: Icon(Icons.battery_4_bar_rounded))),
+                            icon: const Icon(Icons.battery_4_bar_rounded))),
                   ),
                 ),
               ],

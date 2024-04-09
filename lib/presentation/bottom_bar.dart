@@ -5,16 +5,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:locator/Model/user_details.dart';
 import 'package:locator/Provider/Provider.dart';
 import 'package:locator/presentation/Friends.dart';
 import 'package:locator/presentation/Home.dart';
 import 'package:locator/presentation/Notifications.dart';
 import 'package:locator/presentation/UserProfile.dart';
-import 'package:motion_tab_bar/MotionBadgeWidget.dart';
 import 'package:motion_tab_bar/MotionTabBar.dart';
 import 'package:motion_tab_bar/MotionTabBarController.dart';
-import 'package:badges/badges.dart';
 import 'package:provider/provider.dart';
 
 class Home extends StatefulWidget {
@@ -40,6 +39,29 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   String currentUser = 'user';
   String? current;
   String? previous;
+  BannerAd? _bannerAd;
+  bool _isLoaded = false;
+  final adUnitId = 'ca-app-pub-9922819544973761/3118792741';
+   Future<int>? user;
+  Future<int>? _user;
+
+  void loadAd() {
+    _bannerAd = BannerAd(
+        size: AdSize.banner,
+        adUnitId: adUnitId,
+        listener: BannerAdListener(onAdLoaded: (ad) {
+          print('$ad loaded');
+          setState(() {
+            _isLoaded = true;
+          });
+        }, onAdFailedToLoad: (ad, err) {
+          print('failed to load $err');
+          ad.dispose();
+        }),
+        request: const AdManagerAdRequest()
+    );
+    _bannerAd?.load();
+  }
 
   Future<void> allUsers() async {
     currentUser = await Provider.of<CurrentUser>(context, listen: false)
@@ -72,9 +94,12 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    //loadAd();
     allUsers();
     _motionTabBarController = MotionTabBarController(
         initialIndex: currentIndex, length: 4, vsync: this);
+    user= AddFriend().loadFriendRequestsCount(context);
+    _user= AddFriend().getNotifications(context);
   }
 
   Future<String> getAddressFromLatLng(position) async {
@@ -102,26 +127,46 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    Size size = MediaQuery.of(context).size;
+    //Size size = MediaQuery.of(context).size;
     return Scaffold(
-        body: TabBarView(
-            physics: const NeverScrollableScrollPhysics(),
-            controller: _motionTabBarController,
-            children: [
-              MyHomePage(
-                polylines: widget.polylines,
-                markers: widget.markers,
-              ),
-              const Messages(),
-              const Friend(),
-              Profile(
-                user: userName?.name ?? '',
-                currentLocation: current ?? '',
-                id: userName?.id ?? '',
-                prevLocation: previous ?? '',
-                imageUrl: userName?.imageUrl ?? '',
-              ),
-            ]),
+        body:
+            Stack(
+              children: [
+                TabBarView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    controller: _motionTabBarController,
+                    children: [
+                      const MyHomePage(),
+                      const Messages(),
+                      const Friend(),
+                      Profile(
+                        user: userName?.name ?? '',
+                        currentLocation: current ?? '',
+                        id: userName?.id ?? '',
+                        prevLocation: previous ?? '',
+                        imageUrl: userName?.imageUrl ?? '',
+                      ),
+                    ]
+                ),
+                if(_bannerAd!=null)
+                Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child:  Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SafeArea(
+                        child: SizedBox(
+                          width: _bannerAd!.size.width.toDouble(),
+                          height: _bannerAd!.size.height.toDouble(),
+                          child: AdWidget(ad: _bannerAd!),
+                        ),
+                      ),
+                    )
+                ),
+              ],
+            ),
+
         bottomNavigationBar: MotionTabBar(
           controller: _motionTabBarController,
           initialSelectedTab: 'Home',
@@ -130,10 +175,10 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
           badges: [
             null,
             FutureBuilder<int>(
-              future: AddFriend().getNotifications(context),
+              future:_user,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Text('...');
+                  return const Text('');
                 } else if (snapshot.hasError) {
                   return const Icon(Icons.error_outline);
                 } else if (snapshot.hasData && snapshot.data != 0) {
@@ -158,16 +203,15 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
               },
             ),
             FutureBuilder<int>(
-              future: AddFriend().loadFriendRequestsCount(context),
+              future: user,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Text('...');
+                  return const Text('');
                 } else if (snapshot.hasError) {
-                  return Icon(Icons.error_outline);
+                  return const Icon(Icons.error_outline);
                 } else if (snapshot.hasData && snapshot.data != 0) {
-                  print(snapshot.data);
                   return Container(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.deepOrange,
                     ),
@@ -207,7 +251,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
               showBadge = false;
             });
           },
-        ));
+        )
+    );
   }
 
   final List<IconData> listOfIcons = [

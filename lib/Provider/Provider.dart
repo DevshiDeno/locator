@@ -2,21 +2,20 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:locator/Auth/login.dart';
 import 'package:locator/Components/SnackBar.dart';
 import 'package:locator/Model/request_location.dart';
 import 'package:locator/Model/user_details.dart';
-import 'package:locator/presentation/Home.dart';
 import 'package:locator/presentation/bottom_bar.dart';
 import 'package:locator/presentation/splashScreen.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 class GoogleSignInProvider extends ChangeNotifier {
   GoogleSignInAccount? _user = GoogleSignIn().currentUser;
@@ -41,7 +40,7 @@ class GoogleSignInProvider extends ChangeNotifier {
           await FirebaseAuth.instance.signInWithCredential(credential);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => Home()),
+        MaterialPageRoute(builder: (context) => const Home()),
       );
     } catch (e) {
       print(e.toString());
@@ -62,10 +61,20 @@ class GoogleSignInProvider extends ChangeNotifier {
   Future<void> resetPassword(String email, context) async {
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      showSnackBar(context, 'Check your Email to reset passwords');
+      showSnackBar(context, 'Check your Email to reset password');
       Navigator.pop(context);
     } catch (e) {
-      showSnackBarError(context, "Error sending password reset email :$e");
+      showSnackBarError(context, "Invalid Email");
+    }
+  }
+
+  Future<void> signOut(context) async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()));
+    } catch (e) {
+      print('error signing out $e');
     }
   }
 }
@@ -96,29 +105,30 @@ class CurrentUser extends ChangeNotifier {
   }
 
   Future<void> addProfilePic(String id, String imageUrl) async {
+    StreamSubscription? _usersSubscription;
+    StreamSubscription? _friendsSubscription;
+
     final DatabaseReference ref =
         FirebaseDatabase.instance.ref().child('users');
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('friends');
-    reference.onValue.listen((event) {
-      if (event.snapshot.value != null) {
-        Map<dynamic, dynamic>? data = event.snapshot.value as Map?;
-        data?.forEach((key, value) {
+    _friendsSubscription = reference.onValue.listen((event) {
+      final friendData = event.snapshot.value as Map?;
+      if (friendData != null) {
+        friendData.forEach((key, value) {
           if (value['senderId'] == id) {
             reference.child(key).update({'senderImage': imageUrl});
           } else if (value['receiverId'] == id) {
             reference.child(key).update({'imageUrl': imageUrl});
           }
         });
-      } else {
-        print('No data found in friends');
       }
     });
-
+    // _usersSubscription =
     ref.onValue.listen((event) {
-      if (event.snapshot.value != null) {
-        Map<dynamic, dynamic>? data = event.snapshot.value as Map?;
-        data?.forEach((key, value) {
+      final userData = event.snapshot.value as Map?;
+      if (userData != null) {
+        userData.forEach((key, value) {
           if (value['id'] == id) {
             ref.child(key).update({'imageUrl': imageUrl});
           }
@@ -127,8 +137,8 @@ class CurrentUser extends ChangeNotifier {
         print('No data found in users');
       }
     });
-
-    // Notify listeners if this method is part of a ChangeNotifier
+    // _usersSubscription.cancel();
+    _friendsSubscription.cancel();
     notifyListeners();
   }
 }
@@ -138,7 +148,7 @@ class CurrentLocations extends ChangeNotifier {
 
   Future<LatLng> startListening() async {
     const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
+      accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 100,
     );
     Completer<LatLng> completer = Completer<LatLng>();
@@ -148,6 +158,7 @@ class CurrentLocations extends ChangeNotifier {
       if (position != null) {
         LatLng location = LatLng(position.latitude, position.longitude);
         completer.complete(location);
+        print(location);
         // Complete the completer with the location
       }
     });
@@ -156,6 +167,7 @@ class CurrentLocations extends ChangeNotifier {
 
   Future<void> stopListening() async {
     positionStream?.cancel();
+    print('cancelled');
   }
 
   Future<Position> determinePosition() async {
@@ -201,40 +213,54 @@ class CurrentLocations extends ChangeNotifier {
     required double latitude,
     required double longitude,
   }) async {
-    UserCredential userCredential =
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-    await userCredential.user?.updateDisplayName(name);
-    await userCredential.user?.reload();
-    String id = userCredential.user!.uid;
-    showSnackBar(context, "Account created");
-    final DatabaseReference ref =
-        FirebaseDatabase.instance.ref().child('users');
-    ref.push().set({
-      'id': id,
-      "name": name,
-      "email": email,
-      'imageUrl': imageUrl,
-      'password': password,
-      'currentLocation': {'latitude': latitude, 'longitude': longitude}
-    }).then((_) {
+    try {
+      // Attempt to create a new user account
+      UserCredential userCredential =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Update user display name
+      await userCredential.user?.updateDisplayName(name);
+      await userCredential.user?.reload();
+
+      // Get user ID
+      String id = userCredential.user!.uid;
+
+      // Show success message
+      showSnackBar(context, "Account created");
+
+      // Store additional user data in the database
+      final DatabaseReference ref =
+          FirebaseDatabase.instance.ref().child('users');
+      await ref.push().set({
+        'id': id,
+        "name": name,
+        "email": email,
+        'imageUrl': imageUrl,
+        'password': password,
+        'currentLocation': {'latitude': latitude, 'longitude': longitude}
+      });
+
+      // Navigate to the appropriate screen
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => const SplashScreen(),
         ),
       );
-    }).catchError((e) {
-      print('Error creating account: $e');
-      // Check if the error is due to the user already existing
+    } catch (e) {
       if (e is FirebaseAuthException && e.code == 'email-already-in-use') {
-        // Show SnackBar with error message
-        showSnackBar(context, "User already exists");
+        Navigator.pop(context);
+        showSnackBarError(
+            context, "The email address is already in use by another account.");
+      } else {
+        Navigator.pop(context);
+        showSnackBarError(
+            context, "An error occurred while creating the account.");
       }
-    });
-    // Navigate to the appropriate screen
+    }
   }
 
   @override
@@ -328,6 +354,7 @@ class GetLocationProvider extends ChangeNotifier {
   Set<Polyline> polyline = {};
   LatLng? currentPosition;
   List<LatLng> polylineCoordinates = [];
+  String googleAPIKey = "AIzaSyBoITIzaKF1njfhL3AVj_yNGN3XpzpcHHA";
 
   Future<void> updateLocation(
       {required String currentId, required BuildContext context}) async {
@@ -349,10 +376,6 @@ class GetLocationProvider extends ChangeNotifier {
             });
           }
         });
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const SplashScreen()),
-        );
       } else {
         print('No data found');
       }
@@ -439,16 +462,15 @@ class GetLocationProvider extends ChangeNotifier {
   Future<void> addPolyline(LatLng startingPoint, LatLng endingPoint) async {
     PolylinePoints polylinePoints = PolylinePoints();
     PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
-      'AIzaSyBCGc5yRPH4UQUISzl6wH_IkSpRm2rGQ3k',
+      googleAPIKey,
       PointLatLng(startingPoint.latitude, startingPoint.longitude),
       PointLatLng(endingPoint.latitude, endingPoint.longitude),
       travelMode: TravelMode.driving,
     );
-    print(result.points);
     if (result.points.isNotEmpty) {
-      for (var point in result.points) {
+      result.points.forEach((PointLatLng point) {
         polylineCoordinates.add(LatLng(point.latitude, point.longitude));
-      }
+      });
     }
 
     polyline.add(
@@ -513,7 +535,9 @@ class AddFriend extends ChangeNotifier {
     Completer<int> completer = Completer<int>();
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('friends');
-    reference.onValue.listen((event) {
+    StreamSubscription<DatabaseEvent>? subscription;
+
+    subscription = reference.onValue.listen((event) {
       DataSnapshot snapshot = event.snapshot;
       if (snapshot.value != null) {
         Map<String, dynamic> dataList = jsonDecode(jsonEncode(snapshot.value));
@@ -529,12 +553,16 @@ class AddFriend extends ChangeNotifier {
 
         friendsRequestCount = filteredRequest.length;
         completer.complete(friendsRequestCount);
+
+        // Cancel the subscription after completing the completer
       }
     });
+    subscription.cancel();
+
     return completer.future;
   }
 
-  Future<int> getNotifications(BuildContext context) async {
+  Future<int> getNotifications(context) async {
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('requests');
 
@@ -562,7 +590,7 @@ class AddFriend extends ChangeNotifier {
           completer.complete(
               locationRequestCount); // Complete the Future with the count
         } catch (e) {
-          completer.completeError(e); // Complete the Future with an error
+          // completer.completeError(e); // Complete the Future with an error
         }
       }
     });
@@ -634,5 +662,67 @@ class AddFriend extends ChangeNotifier {
       }
     });
     notifyListeners();
+  }
+}
+
+class AdMobProvider extends ChangeNotifier {
+  InterstitialAd? _interstitialAd;
+  final adUnitId = '/6499/example/interstitial';
+
+  Future<void> interstitialAd() async {
+    InterstitialAd.load(
+        adUnitId: adUnitId,
+        request: const AdRequest(),
+        adLoadCallback: InterstitialAdLoadCallback(
+          // Called when an ad is successfully received.
+          onAdLoaded: (ad) {
+            _interstitialAd = ad;
+            _interstitialAd?.show();
+          },
+          onAdFailedToLoad: (LoadAdError error) {
+            debugPrint('InterstitialAd failed to load: $error');
+          },
+        ));
+    notifyListeners();
+  }
+}
+
+class ShowNotification extends ChangeNotifier {
+  String? currentUser;
+  String? senderName;
+
+  Future<void> sendSos(
+      String sender,
+      List<Friends> receiver,
+      String message,
+      double latitude,
+      double longitude,
+      DateTime dateTime,
+      BuildContext context) async {
+    final DatabaseReference ref = FirebaseDatabase.instance.ref().child('SOS');
+    List<Map<String, dynamic>> receiversData = receiver.map((friend) {
+      return {
+        'id': friend.senderId,
+        'name': friend.senderName,
+        'request': friend.request
+      };
+    }).toList();
+    ref.push().set({
+      'sendersName': sender,
+      'receiver': receiversData,
+      'message': message,
+      'currentLocation': {'latitude': latitude, 'longitude': longitude},
+      'dateTime': dateTime.toUtc().toString()
+    }).then((_) async {
+      final provider = Provider.of<AdMobProvider>(context, listen: false);
+      //await provider.interstitialAd();
+      Future.delayed(const Duration(seconds: 2));
+      showSnackBarSos(context, 'SOS sent!');
+      Navigator.pop(context);
+      //shares location
+    }).catchError((error) {
+      Navigator.pop(context);
+      showSnackBarError(context, 'Error sending SOS,Try again! $error');
+    });
   }
 }

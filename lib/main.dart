@@ -4,27 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:locator/Auth/login.dart';
 import 'package:locator/Provider/Provider.dart';
 import 'package:locator/firebase_options.dart';
-import 'package:locator/presentation/bottom_bar.dart';
 import 'package:locator/presentation/splashScreen.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized(); // Ensure that Flutter is initialized before calling Firebase.initializeApp()
-
-  await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform
-  );
+  WidgetsFlutterBinding
+      .ensureInitialized(); // Ensure that Flutter is initialized before calling Firebase.initializeApp()
+  MobileAds.instance.updateRequestConfiguration(RequestConfiguration(
+      testDeviceIds: ['58BFAEB40298D57FC29E534656FD2755']));
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FirebaseAppCheck.instance.activate(
     webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
     androidProvider: AndroidProvider.debug,
-  appleProvider: AppleProvider.appAttest,
+    appleProvider: AppleProvider.appAttest,
   );
-
 
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (context) => ShowNotification()),
+        ChangeNotifierProvider(create: (context) => AdMobProvider()),
         ChangeNotifierProvider(create: (context) => SearchUserProvider()),
         ChangeNotifierProvider(create: (context) => GetReceiversName()),
         ChangeNotifierProvider(create: (context) => CurrentUser()),
@@ -32,7 +33,6 @@ void main() async {
         ChangeNotifierProvider(create: (context) => CurrentLocations()),
         ChangeNotifierProvider(create: (context) => GetLocationProvider()),
         ChangeNotifierProvider(create: (context) => AddFriend()),
-
       ],
       child: const MyApp(),
     ),
@@ -51,8 +51,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home:
-      StreamBuilder<User?>(
+      home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {

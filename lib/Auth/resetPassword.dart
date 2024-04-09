@@ -12,10 +12,14 @@ class PasswordResetPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider=Provider.of<GoogleSignInProvider>(context,listen:false);
+    final provider = Provider.of<GoogleSignInProvider>(context, listen: false);
     return Scaffold(
       appBar: AppBar(
-       // title: const Text('Reset Password'),
+        leading: IconButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            icon: Icon(Icons.arrow_back_ios)),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -23,11 +27,9 @@ class PasswordResetPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width:150,
-              height:150,
-              child: Lottie.asset(
-                  'assets/Icon_location.json'
-              ),
+              width: 150,
+              height: 150,
+              child: Lottie.asset('assets/Icon_location.json'),
             ),
             MyTextField(
               controller: emailController,
@@ -38,7 +40,8 @@ class PasswordResetPage extends StatelessWidget {
             const SizedBox(height: 16.0),
             ElevatedButton(
               onPressed: () async {
-                await provider.resetPassword(emailController.text.trim(),context);
+                await provider.resetPassword(
+                    emailController.text.trim(), context);
               },
               child: const Text('Reset Password'),
             ),
