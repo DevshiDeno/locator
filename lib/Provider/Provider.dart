@@ -17,6 +17,8 @@ import 'package:locator/presentation/bottom_bar.dart';
 import 'package:locator/presentation/splashScreen.dart';
 import 'package:provider/provider.dart';
 
+import '../Auth/config.dart';
+
 class GoogleSignInProvider extends ChangeNotifier {
   GoogleSignInAccount? _user = GoogleSignIn().currentUser;
   final GoogleSignIn googleSignIn = GoogleSignIn();
@@ -354,7 +356,7 @@ class GetLocationProvider extends ChangeNotifier {
   Set<Polyline> polyline = {};
   LatLng? currentPosition;
   List<LatLng> polylineCoordinates = [];
-  String googleAPIKey = "AIzaSyBoITIzaKF1njfhL3AVj_yNGN3XpzpcHHA";
+  String googleAPIKey = Config.apiKey;
 
   Future<void> updateLocation(
       {required String currentId, required BuildContext context}) async {

@@ -136,7 +136,6 @@ class _MyHomePageState extends State<MyHomePage> {
                 (currentUserId == friend.receiverId ||
                     friend.senderId == currentUserId))
             .toList();
-        // print(filteredFriends);
       }
     });
   }
@@ -170,7 +169,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> mergeMarkers() async {
     Set<Marker> mergedMarkers = Set.from(_markers); // Copy existing markers
-        try{
+    try {
       await Future.forEach(Friends.friends, (friend) async {
         Uint8List bytes = (await NetworkAssetBundle(Uri.parse(friend.imageUrl))
                 .load(friend.imageUrl))
@@ -182,29 +181,29 @@ class _MyHomePageState extends State<MyHomePage> {
         if (friend.request == true &&
             (currentUserId == friend.receiverId ||
                 friend.senderId == currentUserId)) {
-          mergedMarkers.add(
-            Marker(
-                markerId: MarkerId(currentUser == friend.name
+          mergedMarkers.add(Marker(
+            markerId: MarkerId(
+                currentUser == friend.name ? friend.senderName : friend.name),
+            position: friend.currentLocation.toLatLng(),
+            infoWindow: InfoWindow(
+                title: currentUser == friend.name
                     ? friend.senderName
-                    : friend.name),
-                position: friend.currentLocation.toLatLng(),
-                infoWindow: InfoWindow(
-                    title: currentUser == friend.name
-                        ? friend.senderName
-                        : friend.name),
-                icon:
-               // customMarker!
+                    : friend.name,
+              snippet: 'Start Marker',
+
+            ),
+            icon:
+                // customMarker!
 
                 BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose
-                // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
-                ),
-            )
-          );
+                    // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
+                    ),
+          ));
         }
       });
-    }catch(e){
-          print(e);
-        }
+    } catch (e) {
+      print(e);
+    }
     await Future.forEach(Users.users, (user) async {
       if (currentUser == user.name) {
         mergedMarkers.add(
