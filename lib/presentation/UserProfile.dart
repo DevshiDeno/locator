@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:locator/Components/ListsTiles.dart';
 import 'package:image_picker/image_picker.dart';
@@ -15,10 +17,12 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_database/firebase_database.dart';
 
+import '../Components/showDialog.dart';
+
 class Profile extends StatefulWidget {
   final String user;
   final String currentLocation;
-  final String prevLocation;
+  final List<String> prevLocation;
   final String id;
   final String imageUrl;
 
@@ -48,13 +52,13 @@ class _ProfileState extends State<Profile> {
   final DatabaseReference ref = FirebaseDatabase.instance.ref().child('users');
   StreamSubscription? _location;
   StreamSubscription? _friends;
+  final picker = ImagePicker();
 
   Future<void> locationHistory() async {
     lastPosition = await Geolocator.getLastKnownPosition();
     if (lastPosition != null) {
       _location = ref.onValue.listen((event) {
         final data = event.snapshot.value as Map<dynamic, dynamic>?;
-
         data?.forEach((key, value) {
           if (value['id'] == currentUser) {
             double previousLatitude = value['currentLocation']['latitude'];
@@ -71,6 +75,23 @@ class _ProfileState extends State<Profile> {
           }
         });
       });
+    }
+  }
+
+  Future<String> getAddressFromLatLng(position) async {
+    try {
+      List<Placemark> placeMarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (placeMarks.isNotEmpty) {
+        return placeMarks[0].name ?? "Unknown Place";
+      } else {
+        return "No address information found";
+      }
+    } catch (e) {
+      // print("Error getting address: $e");
+      return "Error getting address";
     }
   }
 
@@ -95,19 +116,29 @@ class _ProfileState extends State<Profile> {
       });
       showSnackBar(context, 'Profile Image changed!');
     } catch (e) {
-      showSnackBarError(context, "Error uploading image $e");
+      showSnackBarError(context, "Error uploading image.Try again");
     }
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
+  Future<void> _pickCameraImage(context) async {
     final pickedImage = await picker.pickImage(source: ImageSource.camera);
 
     if (pickedImage != null) {
-      // Do something with the selected image
       setState(() {
         _imageFile = File(pickedImage.path);
       });
+      Navigator.pop(context);
+      await uploadImage(_imageFile!);
+    }
+  }
+
+  Future<void> _pickGalleryImage(context) async {
+    final pickedGallery = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedGallery != null) {
+      setState(() {
+        _imageFile = File(pickedGallery.path);
+      });
+      Navigator.pop(context);
       await uploadImage(_imageFile!);
     }
   }
@@ -152,10 +183,11 @@ class _ProfileState extends State<Profile> {
   @override
   void initState() {
     super.initState();
-    _imageUrl = widget.imageUrl;
+    //_imageUrl = widget.imageUrl;
     currentUserId();
     locationHistory();
     _loadFriends();
+    print(widget.prevLocation);
   }
 
   @override
@@ -211,14 +243,19 @@ class _ProfileState extends State<Profile> {
             backgroundColor: Colors.blueGrey,
             radius: 53,
             child: CachedNetworkImage(
-              imageUrl: _imageUrl ?? widget.imageUrl,
+              imageUrl: widget.imageUrl,
               imageBuilder: (context, imageProvider) => CircleAvatar(
                 radius: 50,
                 backgroundImage: imageProvider,
               ),
               placeholder: (context, url) =>
                   const Center(child: CircularProgressIndicator()),
-              errorWidget: (context, url, error) => const Icon(Icons.person),
+              errorWidget: (context, url, error) => const CircleAvatar(
+                  radius: 50,
+                  child: Icon(
+                    Icons.person,
+                    size: 25,
+                  )),
             ),
           ),
         ),
@@ -239,7 +276,30 @@ class _ProfileState extends State<Profile> {
                   child: Center(
                     child: IconButton(
                         onPressed: () async {
-                          await _pickImage();
+                          showModalBottomSheet(
+                              context: context,
+                              builder: (context) {
+                                return Wrap(
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.camera_alt),
+                                      title: const Text('Camera'),
+                                      onTap: () async {
+                                        await _pickCameraImage(context);
+                                        // Navigator.pop(context);
+                                      },
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.photo_library),
+                                      title: const Text('Gallery'),
+                                      onTap: () async {
+                                        await _pickGalleryImage(context);
+                                        //Navigator.pop(context);
+                                      },
+                                    ),
+                                  ],
+                                );
+                              });
                         },
                         icon: const Icon(Icons.add_a_photo_outlined)),
                   ),
@@ -252,7 +312,7 @@ class _ProfileState extends State<Profile> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
+              SizedBox(
                 width: we,
                 height: 100,
                 //color: Colors.lightGreenAccent,
@@ -300,8 +360,10 @@ class _ProfileState extends State<Profile> {
                             backgroundColor: Colors.white,
                             radius: 30,
                             child: IconButton(
-                                onPressed: () {},
-                                icon: Icon(Icons.chat_outlined))),
+                                onPressed: () async {
+                                  await invitation(context);
+                                },
+                                icon: const Icon(Icons.share))),
                       ),
                     ),
                   ],
@@ -332,24 +394,31 @@ class _ProfileState extends State<Profile> {
                 padding: const EdgeInsets.all(8.0),
                 child: Container(
                   width: we,
-                  height: 200,
+                 // color: Colors.lightGreen,
+                  height: 160,
                   decoration: const BoxDecoration(color: Colors.white),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const ListTiles(
-                            text: "Last Updates",
-                            icon: Icon(
-                              Icons.arrow_circle_up_rounded,
-                              size: 20,
-                            )),
-                        ListTiles(
-                          text: widget.prevLocation,
-                          dateTime: DateTime.now(),
-                        ),
-                      ],
-                    ),
+                  child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const ListTiles(
+                          text: "Last Updates",
+                          icon: Icon(
+                            Icons.arrow_circle_up_rounded,
+                            size: 20,
+                          )),
+                      Container(
+                        height: 100,
+                        child: ListView.builder(
+                            itemCount: widget.prevLocation.length,
+                            itemBuilder: (context, index) {
+                              final previous = widget.prevLocation[index];
+                              return  ListTiles(
+                                text: previous,
+                                dateTime: DateTime.now(),
+                              );
+                            }),
+                      )
+                    ],
                   ),
                 ),
               )

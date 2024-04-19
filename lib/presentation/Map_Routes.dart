@@ -60,9 +60,7 @@ class _RoutesMapState extends State<RoutesMap> {
   @override
   void initState() {
     super.initState();
-    // _markers = widget.markers!;
     _polyLines = widget.polyline!;
-    print(_polyLines);
     mergeMarkers();
   }
 
@@ -74,6 +72,8 @@ class _RoutesMapState extends State<RoutesMap> {
     var he = MediaQuery.of(context).size.height;
     return PopScope(
       onPopInvoked: (didPop) async {
+        _markers.clear();
+        _polyLines.clear();
         await streamProvider.stopListening();
         return Future.value();
       },
@@ -95,11 +95,12 @@ class _RoutesMapState extends State<RoutesMap> {
           Positioned(
             top: 30,
             left: 16.0,
-            //right: 10,
             child: IconButton(
                 onPressed: () async {
                   try {
                     await streamProvider.stopListening();
+                    _markers.clear();
+                    _polyLines.clear();
                     Navigator.pop(context);
                   } catch (e) {
                     print(e);

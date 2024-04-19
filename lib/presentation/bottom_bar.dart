@@ -44,6 +44,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   final adUnitId = 'ca-app-pub-9922819544973761/3118792741';
    Future<int>? user;
   Future<int>? _user;
+  List<String>lastLocation=[];
 
   void loadAd() {
     _bannerAd = BannerAd(
@@ -83,7 +84,10 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
           });
 
           current = await getAddressFromLatLng(userName!.currentLocation);
-          previous = await getAddressFromLatLng(userName!.previousLocation);
+          for(var previousLocation in userName!.previousLocation){
+            previous = await getAddressFromLatLng(previousLocation);
+            return lastLocation.add(previous!);
+          }
         } catch (e) {
           print('Error updating state: $e');
         }
@@ -99,7 +103,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     _motionTabBarController = MotionTabBarController(
         initialIndex: currentIndex, length: 4, vsync: this);
     user= AddFriend().loadFriendRequestsCount(context);
-    _user= AddFriend().getNotifications(context);
+    _user= AddFriend().getNotificationCount(context);
   }
 
   Future<String> getAddressFromLatLng(position) async {
@@ -127,7 +131,6 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    //Size size = MediaQuery.of(context).size;
     return Scaffold(
         body:
             Stack(
@@ -143,7 +146,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                         user: userName?.name ?? '',
                         currentLocation: current ?? '',
                         id: userName?.id ?? '',
-                        prevLocation: previous ?? '',
+                        prevLocation:  lastLocation ?? [],
                         imageUrl: userName?.imageUrl ?? '',
                       ),
                     ]

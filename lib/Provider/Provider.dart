@@ -25,9 +25,18 @@ class GoogleSignInProvider extends ChangeNotifier {
 
   GoogleSignInAccount? get user => _user;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final DatabaseReference _database =
+      FirebaseDatabase.instance.ref().child('users');
+  List<Locations> previousLocationsData = [];
 
   Future<void> signInWithGoogle(context) async {
     try {
+      final updateProvider =
+          Provider.of<GetLocationProvider>(context, listen: false);
+      final provider = Provider.of<CurrentLocations>(context, listen: false);
+      Position userPosition = await provider.determinePosition();
+      await googleSignIn.signOut();
+
       final GoogleSignInAccount? googleSignInAccount =
           await googleSignIn.signIn();
       final GoogleSignInAuthentication googleSignInAuthentication =
@@ -39,13 +48,62 @@ class GoogleSignInProvider extends ChangeNotifier {
       );
 
       final UserCredential userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const Home()),
-      );
+      await _auth.signInWithCredential(credential);
+      User? user = userCredential.user;
+      if (userCredential.user != null &&
+          userCredential.additionalUserInfo!.isNewUser) {
+        Locations newLocation = Locations(
+          latitude: userPosition.latitude,
+          longitude: userPosition.longitude,
+        );
+        previousLocationsData.add(newLocation);
+        Users users = Users(
+          id: user!.uid,
+          name: user.displayName ?? "",
+          imageUrl: user.photoURL ?? "",
+          email: user.email ?? "",
+          currentLocation: Locations(
+              latitude: userPosition.latitude,
+              longitude: userPosition.longitude
+          ),
+          previousLocation:previousLocationsData
+        );
+        await _writeUserData(users);
+        // await updateProvider.updateLocation(
+        //     currentId: userCredential.user!.uid, context: context);
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (context) => const SplashScreen()));
+      } else {
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (context) => const SplashScreen()));
+      }
     } catch (e) {
       print(e.toString());
+    }
+  }
+
+  Future<void> _writeUserData(Users user) async {
+    try {
+      List<Map<String, dynamic>> previousLocationsJson = previousLocationsData
+          .map((location) => {
+        'latitude': location.latitude,
+        'longitude': location.longitude,
+      })
+          .toList();
+      await _database.push().set({
+        'id': user.id,
+        'name': user.name,
+        'imageUrl': user.imageUrl,
+        'email': user.email,
+        'password': user.name,
+        'currentLocation': {
+          'latitude': user.currentLocation.latitude,
+          'longitude': user.currentLocation.longitude
+        },
+        'previousLocation':previousLocationsJson
+      });
+    } catch (e) {
+      print("Error writing user data: $e");
     }
   }
 
@@ -62,17 +120,26 @@ class GoogleSignInProvider extends ChangeNotifier {
 
   Future<void> resetPassword(String email, context) async {
     try {
+      // Send password reset email
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
       showSnackBar(context, 'Check your Email to reset password');
       Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') {
+        // If user-not-found error, the email doesn't exist
+        showSnackBarError(context, "Email does not exist");
+      } else {
+        showSnackBarError(context, "Error: ${e.message}");
+      }
     } catch (e) {
-      showSnackBarError(context, "Invalid Email");
+      // Handle other exceptions
+      showSnackBarError(context, "Error: $e");
     }
   }
-
   Future<void> signOut(context) async {
     try {
       await FirebaseAuth.instance.signOut();
+      await googleSignIn.signOut();
       Navigator.pushReplacement(context,
           MaterialPageRoute(builder: (context) => const LoginScreen()));
     } catch (e) {
@@ -104,106 +171,6 @@ class CurrentUser extends ChangeNotifier {
       print('User not logged in');
       return 'Unknown user';
     }
-  }
-
-  Future<void> addProfilePic(String id, String imageUrl) async {
-    StreamSubscription? _usersSubscription;
-    StreamSubscription? _friendsSubscription;
-
-    final DatabaseReference ref =
-        FirebaseDatabase.instance.ref().child('users');
-    final DatabaseReference reference =
-        FirebaseDatabase.instance.ref().child('friends');
-    _friendsSubscription = reference.onValue.listen((event) {
-      final friendData = event.snapshot.value as Map?;
-      if (friendData != null) {
-        friendData.forEach((key, value) {
-          if (value['senderId'] == id) {
-            reference.child(key).update({'senderImage': imageUrl});
-          } else if (value['receiverId'] == id) {
-            reference.child(key).update({'imageUrl': imageUrl});
-          }
-        });
-      }
-    });
-    // _usersSubscription =
-    ref.onValue.listen((event) {
-      final userData = event.snapshot.value as Map?;
-      if (userData != null) {
-        userData.forEach((key, value) {
-          if (value['id'] == id) {
-            ref.child(key).update({'imageUrl': imageUrl});
-          }
-        });
-      } else {
-        print('No data found in users');
-      }
-    });
-    // _usersSubscription.cancel();
-    _friendsSubscription.cancel();
-    notifyListeners();
-  }
-}
-
-class CurrentLocations extends ChangeNotifier {
-  StreamSubscription<Position>? positionStream;
-
-  Future<LatLng> startListening() async {
-    const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 100,
-    );
-    Completer<LatLng> completer = Completer<LatLng>();
-    positionStream =
-        Geolocator.getPositionStream(locationSettings: locationSettings)
-            .listen((Position? position) {
-      if (position != null) {
-        LatLng location = LatLng(position.latitude, position.longitude);
-        completer.complete(location);
-        print(location);
-        // Complete the completer with the location
-      }
-    });
-    return completer.future;
-  }
-
-  Future<void> stopListening() async {
-    positionStream?.cancel();
-    print('cancelled');
-  }
-
-  Future<Position> determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    // Test if location services are enabled.
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      // Handle case where location services are disabled
-      return Future.error('Location services are disabled.');
-    }
-
-    // Check and request location permissions
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        // Handle case where location permissions are denied
-        return Future.error('Location permissions are denied');
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      // Handle case where location permissions are permanently denied
-      return Future.error(
-          'Location permissions are permanently denied, we cannot request permissions.');
-    }
-
-    // Fetch the user's current position
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.medium,
-    );
-    return position;
   }
 
   Future<void> newUser({
@@ -263,6 +230,127 @@ class CurrentLocations extends ChangeNotifier {
             context, "An error occurred while creating the account.");
       }
     }
+
+    notifyListeners();
+  }
+
+  Future<bool> checkIfNameExists(String name) async {
+    final DatabaseReference ref =
+        FirebaseDatabase.instance.ref().child('users');
+
+    // Retrieve all users
+    DataSnapshot snapshot = (await ref.once().then((event) => event.snapshot));
+    Map<dynamic, dynamic>? values = snapshot.value as Map<dynamic, dynamic>?;
+
+    // Check if any user exists with the given name (case-insensitive)
+    if (values != null) {
+      for (var user in values.values) {
+        if (user['name'].toString().toLowerCase() == name.toLowerCase()) {
+          return true; // Username found
+        }
+      }
+    }
+    return false; // Username not found
+  }
+
+  Future<void> addProfilePic(String id, String imageUrl) async {
+    StreamSubscription? usersSubscription;
+    StreamSubscription? friendsSubscription;
+
+    final DatabaseReference ref =
+        FirebaseDatabase.instance.ref().child('users');
+    final DatabaseReference reference =
+        FirebaseDatabase.instance.ref().child('friends');
+
+    friendsSubscription = reference.onValue.listen((event) {
+      final friendData = event.snapshot.value as Map?;
+      if (friendData != null) {
+        friendData.forEach((key, value) {
+          if (value['senderId'] == id) {
+            reference.child(key).update({'senderImage': imageUrl});
+          } else if (value['receiverId'] == id) {
+            reference.child(key).update({'imageUrl': imageUrl});
+          }
+        });
+      }
+      friendsSubscription!.cancel(); // Cancel the subscription after updating
+    });
+
+    usersSubscription = ref.onValue.listen((event) {
+      final userData = event.snapshot.value as Map?;
+      if (userData != null) {
+        userData.forEach((key, value) {
+          if (value['id'] == id) {
+            ref.child(key).update({'imageUrl': imageUrl});
+          }
+        });
+      } else {
+        print('No data found in users');
+      }
+      usersSubscription!.cancel(); // Cancel the subscription after updating
+    });
+
+    notifyListeners();
+  }
+}
+
+class CurrentLocations extends ChangeNotifier {
+  StreamSubscription<Position>? positionStream;
+
+  Future<LatLng> startListening() async {
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 100,
+    );
+    Completer<LatLng> completer = Completer<LatLng>();
+    positionStream =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position? position) {
+      if (position != null) {
+        LatLng location = LatLng(position.latitude, position.longitude);
+        completer.complete(location);
+        // Complete the completer with the location
+      }
+    });
+    return completer.future;
+  }
+
+  Future<void> stopListening() async {
+    positionStream?.cancel();
+  }
+
+  Future<Position> determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Test if location services are enabled.
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // Handle case where location services are disabled
+      return Future.error('Location services are disabled.');
+    }
+
+    // Check and request location permissions
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        // Handle case where location permissions are denied
+        return Future.error('Location permissions are denied');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      // Handle case where location permissions are permanently denied
+      return Future.error(
+          'Location permissions are permanently denied, we cannot request permissions.');
+    }
+
+    // Fetch the user's current position
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.medium,
+    );
+    return position;
   }
 
   @override
@@ -467,12 +555,14 @@ class GetLocationProvider extends ChangeNotifier {
       googleAPIKey,
       PointLatLng(startingPoint.latitude, startingPoint.longitude),
       PointLatLng(endingPoint.latitude, endingPoint.longitude),
-      travelMode: TravelMode.driving,
+      travelMode: TravelMode.walking,
     );
+    polylineCoordinates.clear();
+
     if (result.points.isNotEmpty) {
-      result.points.forEach((PointLatLng point) {
+      for (var point in result.points) {
         polylineCoordinates.add(LatLng(point.latitude, point.longitude));
-      });
+      }
     }
 
     polyline.add(
@@ -538,7 +628,6 @@ class AddFriend extends ChangeNotifier {
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('friends');
     StreamSubscription<DatabaseEvent>? subscription;
-
     subscription = reference.onValue.listen((event) {
       DataSnapshot snapshot = event.snapshot;
       if (snapshot.value != null) {
@@ -558,20 +647,21 @@ class AddFriend extends ChangeNotifier {
 
         // Cancel the subscription after completing the completer
       }
+      subscription?.cancel();
     });
-    subscription.cancel();
 
     return completer.future;
   }
 
-  Future<int> getNotifications(context) async {
+  Future<int> getNotificationCount(context) async {
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('requests');
+    StreamSubscription<DatabaseEvent>? friendSubscription;
 
     final Completer<int> completer =
         Completer<int>(); // Completer to handle async completion
 
-    reference.onValue.listen((event) async {
+    friendSubscription = reference.onValue.listen((event) async {
       final provider = Provider.of<CurrentUser>(context, listen: false);
       currentUser = await provider.getCurrentUserId();
       sendersName = await provider.getCurrentUserDisplayName();
@@ -586,15 +676,17 @@ class AddFriend extends ChangeNotifier {
           messagesRequests = RequestLocation.requested
               .where((sender) =>
                   currentUser == sender.receivingRequest &&
-                  sendersName != sender.sender)
+                  sendersName != sender.sender &&
+                  sender.isAccepted == false)
               .toList();
           locationRequestCount = messagesRequests.length;
           completer.complete(
               locationRequestCount); // Complete the Future with the count
         } catch (e) {
-          // completer.completeError(e); // Complete the Future with an error
+          completer.completeError(e); // Complete the Future with an error
         }
       }
+      friendSubscription?.cancel();
     });
     return completer.future;
   }
@@ -705,7 +797,7 @@ class ShowNotification extends ChangeNotifier {
     List<Map<String, dynamic>> receiversData = receiver.map((friend) {
       return {
         'id': friend.senderId,
-        'name': friend.senderName,
+        'name': friend.senderName == sender ? friend.name : friend.senderName,
         'request': friend.request
       };
     }).toList();

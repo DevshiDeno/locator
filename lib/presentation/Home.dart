@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
+import 'dart:ui';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:locator/Components/Buttons.dart';
 import 'package:locator/Components/SnackBar.dart';
 import 'package:locator/Components/showDialog.dart';
@@ -17,6 +20,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image/image.dart' as img;
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
@@ -167,40 +172,61 @@ class _MyHomePageState extends State<MyHomePage> {
     return position;
   }
 
+  Future<BitmapDescriptor> getCustomMarkerIcon(String imageUrl) async {
+    const ImageConfiguration config = ImageConfiguration();
+    final Completer<BitmapDescriptor> completer = Completer<BitmapDescriptor>();
+
+    final ImageStream stream = NetworkImage(imageUrl).resolve(config);
+    stream.addListener(
+        ImageStreamListener((ImageInfo image, bool _) async {
+      final ByteData? byteData =
+          await image.image.toByteData(format: ImageByteFormat.png);
+      final Uint8List? pngBytes = byteData?.buffer.asUint8List();
+      final List<int> compressedBytes =
+          await FlutterImageCompress.compressWithList(
+        pngBytes!,
+        minHeight: 80, // Adjust as needed
+        minWidth: 50, // Adjust as needed
+        quality: 70,
+      );
+
+      final BitmapDescriptor bitmapDescriptor =
+          BitmapDescriptor.fromBytes(Uint8List.fromList(compressedBytes));
+
+      completer.complete(bitmapDescriptor);
+    }));
+    return completer.future;
+  }
+
+
+
   Future<void> mergeMarkers() async {
-    Set<Marker> mergedMarkers = Set.from(_markers); // Copy existing markers
+    Set<Marker> mergedMarkers = {}; // Copy existing markers
     try {
       await Future.forEach(Friends.friends, (friend) async {
-        Uint8List bytes = (await NetworkAssetBundle(Uri.parse(friend.imageUrl))
-                .load(friend.imageUrl))
-            .buffer
-            .asUint8List();
-        setState(() {
-          customMarker = BitmapDescriptor.fromBytes(bytes);
-        });
         if (friend.request == true &&
             (currentUserId == friend.receiverId ||
                 friend.senderId == currentUserId)) {
           mergedMarkers.add(Marker(
-            markerId: MarkerId(
-                currentUser == friend.name ? friend.senderName : friend.name),
-            position: friend.currentLocation.toLatLng(),
-            infoWindow: InfoWindow(
+              markerId: MarkerId(
+                  currentUser == friend.name ? friend.senderName : friend.name),
+              position: friend.currentLocation.toLatLng(),
+              infoWindow: InfoWindow(
                 title: currentUser == friend.name
                     ? friend.senderName
                     : friend.name,
-              snippet: 'Start Marker',
+              ),
+              icon: await getCustomMarkerIcon(friend.imageUrl)
 
-            ),
-            icon:
-                // customMarker!
-
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose
-                    // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
-                    ),
-          ));
+              // BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose
+              // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
+              //),
+              ));
         }
       });
+      // setState(() {
+      //   _markers = mergedMarkers;
+      // });
     } catch (e) {
       print(e);
     }
@@ -211,8 +237,7 @@ class _MyHomePageState extends State<MyHomePage> {
               markerId: MarkerId(user.name),
               infoWindow:
                   InfoWindow(title: currentUser == user.name ? 'You' : ''),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen),
+              icon: await getCustomMarkerIcon(user.imageUrl),
               position: user.currentLocation.toLatLng()),
         );
       }
@@ -222,10 +247,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Future<BitmapDescriptor> getMarkerIconFromUrl(String imageUrl) async {
-  //   final cacheManager = DefaultCacheManager();
-  //
-  // }  @override
+  @override
   @override
   void initState() {
     super.initState();
@@ -255,425 +277,478 @@ class _MyHomePageState extends State<MyHomePage> {
     var we = MediaQuery.of(context).size.width;
     var he = MediaQuery.of(context).size.height;
     return Scaffold(
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(0),
+          child: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+          ),
+          //leading: Icon(Icons.abc),
+        ),
         body: Stack(
-      children: [
-        GoogleMap(
-            cloudMapId: 'cf2bb55d8b44b0bd',
-            mapType: MapType.normal,
-            zoomControlsEnabled: false,
-            onMapCreated: (controller) async {
-              mapController = controller;
-            },
-            initialCameraPosition: CameraPosition(
-              target: currentPosition,
-              zoom: 8.0,
+          children: [
+            Positioned(
+              top: 0,
+              // Start at the top
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: GoogleMap(
+                  cloudMapId: 'cf2bb55d8b44b0bd',
+                  mapType: MapType.normal,
+                  zoomControlsEnabled: false,
+                  onMapCreated: (controller) async {
+                    mapController = controller;
+                  },
+                  initialCameraPosition: CameraPosition(
+                    target: currentPosition,
+                    zoom: 8.0,
+                  ),
+                  markers: _markers
+              ),
             ),
-            markers: _markers),
-        Positioned(
-          top: 10,
-          left: 0,
-          right: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: SizedBox(
-              width: we,
-              // height: he * 0.1,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: GestureDetector(
-                      onTap: () {
-                        print('Current $userName');
-                        if (userName?.id != null) {
-                          getAddressFromLatLng(
-                                  userName?.currentLocation.toLatLng())
-                              .then((current) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => Profile(
-                                  user: userName!.name,
-                                  currentLocation: current,
-                                  id: userName!.id,
-                                  prevLocation: current,
-                                  imageUrl: userName!.imageUrl,
+      // Center(
+      //   child: Container(
+      //     width: 50,
+      //     height: 80,
+      //     child: CustomPaint(
+      //       painter: MarkerPainter(),
+      //     ),
+      //   ),
+      // ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: SizedBox(
+                  width: we,
+                  // height: he * 0.1,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: GestureDetector(
+                          onTap: () async {
+                            if (userName?.id != null) {
+                              List<String>lastLocation=[];
+                              for (var previousLocation
+                                  in userName!.previousLocation) {
+                                prev = await getAddressFromLatLng(
+                                    previousLocation);
+                                return lastLocation.add(prev!);
+                              }
+                              getAddressFromLatLng(
+                                      userName?.currentLocation.toLatLng())
+                                  .then((current) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => Profile(
+                                      user: userName!.name,
+                                      currentLocation: current,
+                                      id: userName!.id,
+                                      prevLocation: lastLocation,
+                                      imageUrl: userName!.imageUrl,
+                                    ),
+                                  ),
+                                );
+                              }).catchError((e) {
+                                print(e);
+                              });
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text("User not logged In")));
+                            }
+                          },
+                          child: CircleAvatar(
+                            backgroundColor: Colors.blueGrey,
+                            radius: 25,
+                            child: CachedNetworkImage(
+                              imageUrl: userName?.imageUrl ??
+                                  'https://source.unsplash.com/user/wsanter',
+                              imageBuilder: (context, imageProvider) =>
+                                  CircleAvatar(
+                                radius: 22,
+                                backgroundImage: imageProvider,
+                              ),
+                              placeholder: (context, url) => const Center(
+                                  child: CircularProgressIndicator()),
+                              errorWidget: (context, url, error) =>
+                                  const Icon(Icons.person),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: SizedBox(
+                          width: 225,
+                          // height: 300,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            // mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 248,
+                                height: 45,
+                                child: TextField(
+                                  maxLines: 1,
+                                  onChanged: (query) async {
+                                    try {
+                                      await searchProvider.searchUsers(query);
+                                      setState(() {
+                                        if (query.isEmpty) {
+                                          matchingUsers.clear();
+                                          filterUser
+                                              .clear(); // Clear the matchingUsers list
+                                        } else {
+                                          matchingUsers = searchProvider
+                                              .searchResults
+                                              .where((user) => user.name
+                                                  .toLowerCase()
+                                                  .contains(
+                                                      query.toLowerCase()))
+                                              .toList();
+                                          filterUser = matchingUsers
+                                              .where((friend) =>
+                                                  !filteredFriends.any((ff) =>
+                                                      ff.receiverId ==
+                                                          friend.id ||
+                                                      ff.senderId == friend.id))
+                                              .toList();
+                                        }
+                                      });
+                                    } catch (e) {
+                                      Text(e.toString());
+                                    }
+                                  },
+                                  controller: _controller,
+                                  decoration: const InputDecoration(
+                                    contentPadding: EdgeInsets.symmetric(
+                                        vertical: 5, horizontal: 10),
+                                    hintText: 'Search',
+                                  ),
                                 ),
                               ),
-                            );
-                          }).catchError((e) {
-                            print(e);
-                          });
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text("User not logged In")));
-                        }
-                      },
-                      child: CircleAvatar(
-                        backgroundColor: Colors.blueGrey,
-                        radius: 25,
-                        child: CachedNetworkImage(
-                          imageUrl: userName?.imageUrl ??
-                              'https://source.unsplash.com/user/wsanter',
-                          imageBuilder: (context, imageProvider) =>
-                              CircleAvatar(
-                            radius: 22,
-                            backgroundImage: imageProvider,
+                              if (filterUser.isNotEmpty)
+                                Container(
+                                    width: 248,
+                                    height: 100,
+                                    color: Colors.white,
+                                    child: ListView.builder(
+                                        physics: const ScrollPhysics(),
+                                        itemCount: filterUser.length,
+                                        itemBuilder: (context, index) {
+                                          final searchedUser =
+                                              filterUser[index];
+                                          return GestureDetector(
+                                            onTap: () async {
+                                              String senderId =
+                                                  await getCurrentId
+                                                      .getCurrentUserId();
+                                              searchProvider
+                                                  .getFriendIds(senderId);
+                                              await getLocationProvider
+                                                  .selectedItem(
+                                                      index, mapController);
+                                              setState(() {
+                                                FocusScope.of(context)
+                                                    .unfocus();
+                                                filterUser.clear();
+                                                _controller.clear();
+                                              });
+                                            },
+                                            child: ListTile(
+                                                title: Text(
+                                                  currentUser ==
+                                                          searchedUser.name
+                                                      ? "YOU"
+                                                      : searchedUser.name,
+                                                ),
+                                                subtitle: FutureBuilder(
+                                                    future:
+                                                        getAddressFromLatLng(
+                                                            searchedUser
+                                                                .currentLocation
+                                                                .toLatLng()),
+                                                    builder: (context,
+                                                        addressSnapshot) {
+                                                      if (addressSnapshot
+                                                              .connectionState ==
+                                                          ConnectionState
+                                                              .waiting) {
+                                                        return const Center(
+                                                            child:
+                                                                CircularProgressIndicator());
+                                                      } else if (addressSnapshot
+                                                          .hasError) {
+                                                        return Text(
+                                                            'Error: ${addressSnapshot.error}');
+                                                      } else {
+                                                        return Text(
+                                                            addressSnapshot
+                                                                .data!);
+                                                      }
+                                                    }),
+                                                trailing: currentUser !=
+                                                        searchedUser.name
+                                                    ? TextButton(
+                                                        onPressed: () async {
+                                                          final addProvider =
+                                                              Provider.of<
+                                                                      AddFriend>(
+                                                                  context,
+                                                                  listen:
+                                                                      false);
+                                                          LatLng position =
+                                                              searchedUser
+                                                                  .currentLocation
+                                                                  .toLatLng();
+                                                          String sender =
+                                                              await getCurrentId
+                                                                  .getCurrentUserDisplayName();
+                                                          String senderId =
+                                                              await getCurrentId
+                                                                  .getCurrentUserId();
+                                                          addProvider
+                                                              .friendsList(
+                                                            receiverId:
+                                                                searchedUser.id,
+                                                            senderId: senderId,
+                                                            senderImage:
+                                                                userName
+                                                                    ?.imageUrl,
+                                                            senderName: sender,
+                                                            name: searchedUser
+                                                                .name,
+                                                            latitude: position
+                                                                .latitude,
+                                                            longitude: position
+                                                                .longitude,
+                                                            requested: isFriend,
+                                                            imageUrl:
+                                                                searchedUser
+                                                                    .imageUrl,
+                                                          );
+                                                          setState(() {
+                                                            filterUser.clear();
+                                                            _controller.clear();
+                                                            FocusScope.of(
+                                                                    context)
+                                                                .unfocus();
+                                                          });
+                                                        },
+                                                        child: const Text(
+                                                          // searchedUser.id==
+                                                          'Add Friend',
+                                                          style: TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold),
+                                                        ),
+                                                      )
+                                                    : null),
+                                          );
+                                        }))
+                            ],
                           ),
-                          placeholder: (context, url) =>
-                              const Center(child: CircularProgressIndicator()),
-                          errorWidget: (context, url, error) =>
-                              const Icon(Icons.person),
                         ),
                       ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: SizedBox(
-                      width: 225,
-                      // height: 300,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        // mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 248,
-                            height: 45,
-                            child: TextField(
-                              maxLines: 1,
-                              onChanged: (query) async {
-                                try {
-                                  await searchProvider.searchUsers(query);
-                                  setState(() {
-                                    if (query.isEmpty) {
-                                      matchingUsers.clear();
-                                      filterUser
-                                          .clear(); // Clear the matchingUsers list
-                                    } else {
-                                      matchingUsers = searchProvider
-                                          .searchResults
-                                          .where((user) => user.name
-                                              .toLowerCase()
-                                              .contains(query.toLowerCase()))
-                                          .toList();
-                                      filterUser = matchingUsers
-                                          .where((friend) =>
-                                              !filteredFriends.any((ff) =>
-                                                  ff.receiverId == friend.id ||
-                                                  ff.senderId == friend.id))
-                                          .toList();
-                                    }
-                                  });
-                                } catch (e) {
-                                  Text(e.toString());
-                                }
-                              },
-                              controller: _controller,
-                              decoration: const InputDecoration(
-                                contentPadding: EdgeInsets.symmetric(
-                                    vertical: 5, horizontal: 10),
-                                hintText: 'Search',
-                              ),
-                            ),
-                          ),
-                          if (filterUser.isNotEmpty)
-                            Container(
-                                width: 248,
-                                height: 100,
-                                color: Colors.white,
-                                child: ListView.builder(
-                                    physics: const ScrollPhysics(),
-                                    itemCount: filterUser.length,
-                                    itemBuilder: (context, index) {
-                                      final searchedUser = filterUser[index];
-                                      return GestureDetector(
-                                        onTap: () async {
-                                          String senderId = await getCurrentId
-                                              .getCurrentUserId();
-                                          searchProvider.getFriendIds(senderId);
-                                          await getLocationProvider
-                                              .selectedItem(
-                                                  index, mapController);
-                                          setState(() {
-                                            FocusScope.of(context).unfocus();
-                                            filterUser.clear();
-                                            _controller.clear();
-                                          });
-                                        },
-                                        child: ListTile(
-                                            title: Text(
-                                              currentUser == searchedUser.name
-                                                  ? "YOU"
-                                                  : searchedUser.name,
-                                            ),
-                                            subtitle: FutureBuilder(
-                                                future: getAddressFromLatLng(
-                                                    searchedUser.currentLocation
-                                                        .toLatLng()),
-                                                builder:
-                                                    (context, addressSnapshot) {
-                                                  if (addressSnapshot
-                                                          .connectionState ==
-                                                      ConnectionState.waiting) {
-                                                    return const Center(
-                                                        child:
-                                                            CircularProgressIndicator());
-                                                  } else if (addressSnapshot
-                                                      .hasError) {
-                                                    return Text(
-                                                        'Error: ${addressSnapshot.error}');
-                                                  } else {
-                                                    return Text(
-                                                        addressSnapshot.data!);
-                                                  }
-                                                }),
-                                            trailing: currentUser !=
-                                                    searchedUser.name
-                                                ? TextButton(
-                                                    onPressed: () async {
-                                                      final addProvider =
-                                                          Provider.of<
-                                                                  AddFriend>(
-                                                              context,
-                                                              listen: false);
-                                                      LatLng position =
-                                                          searchedUser
-                                                              .currentLocation
-                                                              .toLatLng();
-                                                      String sender =
-                                                          await getCurrentId
-                                                              .getCurrentUserDisplayName();
-                                                      String senderId =
-                                                          await getCurrentId
-                                                              .getCurrentUserId();
-                                                      addProvider.friendsList(
-                                                        receiverId:
-                                                            searchedUser.id,
-                                                        senderId: senderId,
-                                                        senderImage:
-                                                            userName?.imageUrl,
-                                                        senderName: sender,
-                                                        name: searchedUser.name,
-                                                        latitude:
-                                                            position.latitude,
-                                                        longitude:
-                                                            position.longitude,
-                                                        requested: isFriend,
-                                                        imageUrl: searchedUser
-                                                            .imageUrl,
-                                                      );
-                                                      setState(() {
-                                                        filterUser.clear();
-                                                        _controller.clear();
-                                                        FocusScope.of(context)
-                                                            .unfocus();
-                                                      });
-                                                    },
-                                                    child: const Text(
-                                                      // searchedUser.id==
-                                                      'Add Friend',
-                                                      style: TextStyle(
-                                                          fontSize: 12,
-                                                          fontWeight:
-                                                              FontWeight.bold),
-                                                    ),
-                                                  )
-                                                : null),
-                                      );
-                                    }))
-                        ],
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: CircleAvatar(
-                        backgroundColor: Colors.white,
-                        radius: 25,
-                        child: IconButton(
-                            onPressed: () {
-                              shareLocation(context);
-                            },
-                            icon: const Icon(Icons.share_location_rounded))),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-            top: he * 0.2,
-            left: 16.0,
-            child: Container(
-              decoration: BoxDecoration(
-                  color: Colors.lightGreenAccent,
-                  borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                children: [
-                  IconButton(
-                      onPressed: () {
-                        mapController?.animateCamera(CameraUpdate.zoomOut());
-                      },
-                      icon: const Icon(Icons.zoom_out)),
-                  IconButton(
-                      onPressed: () {
-                        mapController?.animateCamera(CameraUpdate.zoomIn());
-                      },
-                      icon: const Icon(Icons.zoom_in)),
-                ],
-              ),
-            )),
-        Positioned(
-            top: he * 0.2,
-            right: 16.0,
-            child: IconButton(
-                onPressed: () async {
-                  await invitation(context);
-                },
-                icon: const Icon(
-                  Icons.share,
-                  size: 30,
-                ))),
-        Positioned(
-            left: we * 0.73,
-            right: 0,
-            bottom: he * 0.36,
-            child: CircleAvatar(
-              radius: 60,
-              backgroundColor: Colors.transparent,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                      onPressed: () async {
-                        try {
-                          Users users = filteredUsers
-                              .firstWhere((user) => currentUser == user.name);
-                          LatLng location = users.currentLocation.toLatLng();
-                          await getLocationProvider.getCurrentLocations(
-                              location, mapController);
-                        } catch (e) {
-                          if (e is StateError) {
-                            print(
-                                'No element found in filteredUsers that satisfies the condition');
-                          } else {
-                            print(e);
-                          }
-                        }
-                      },
-                      icon: const Icon(
-                        Icons.location_on,
-                        size: 50,
-                      )),
-                  Expanded(
-                    child: Container(
-                      color: Colors.white54,
-                      child: Padding(
-                        padding: const EdgeInsets.all(4.0),
-                        child: Text(
-                          currentUser,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 20),
-                        ),
-                      ),
-                    ),
-                  )
-                ],
-              ),
-            )),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: he * 0,
-          child: Padding(
-            padding: const EdgeInsets.all(10.0),
-            child: Container(
-              width: we,
-              height: he * 0.33,
-              decoration: BoxDecoration(
-                  color: Colors.white70, borderRadius: BorderRadius.circular(12)
-                  //color: const Color.fromRGBO(255, 255, 255, 0.5),
-                  ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                // mainAxisSize: MainAxisSize.min,
-                children: [
-                  // const Center(child: Text("Friends")),
-                  ListTile(
-                    title: SizedBox(
-                      width: we,
-                      height: 50,
-                      //color: Colors.white,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButtons(
-                            text: "Friends",
-                            onPressed: () {
-                              filterFriends("friends");
-                            },
-                          ),
-                          SizedBox(width: we * 0.01),
-
-                          ElevatedButtons(
-                            text: "Pending",
-                            onPressed: () {
-                              filterFriends('Pending');
-                            },
-                          ),
-                          //const SizedBox(width: 30),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    height: he * 0.24,
-                    width: we,
-                    child: filteredFriends.isNotEmpty
-                        ? ListView.builder(
-                            itemCount: filteredFriends.length,
-                            itemBuilder: (context, index) {
-                              final friend = filteredFriends[index];
-                              return GestureDetector(
-                                onTap: () async {
-                                  setState(() {
-                                    selectedIndex = index;
-                                  });
-                                  if (friend.request == true) {
-                                    await getLocationProvider
-                                        .getCurrentLocation(
-                                            index, mapController);
-                                    await getReceiversName.getReceiver(
-                                        index, currentUser);
-                                  } else {
-                                    showSnackBarWarning(
-                                        context, 'Friend Request pending');
-                                  }
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: CircleAvatar(
+                            backgroundColor: Colors.white,
+                            radius: 25,
+                            child: IconButton(
+                                onPressed: () {
+                                  shareLocation(context);
                                 },
-                                child: buildRow(
-                                    we, friend, context, selectedIndex, index),
-                              );
-                            },
-                          )
-                        : const Center(
-                            child: Text(
-                              'Invite friends and Family to share Location to',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                          ),
-                  )
-                ],
+                                icon:
+                                    const Icon(Icons.share_location_rounded))),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
-    ));
+            Positioned(
+                top: he * 0.2,
+                left: 16.0,
+                child: Container(
+                  decoration: BoxDecoration(
+                      color: Colors.lightGreenAccent,
+                      borderRadius: BorderRadius.circular(16)),
+                  child: Column(
+                    children: [
+                      IconButton(
+                          onPressed: () {
+                            mapController
+                                ?.animateCamera(CameraUpdate.zoomOut());
+                          },
+                          icon: const Icon(Icons.zoom_out)),
+                      IconButton(
+                          onPressed: () {
+                            mapController?.animateCamera(CameraUpdate.zoomIn());
+                          },
+                          icon: const Icon(Icons.zoom_in)),
+                    ],
+                  ),
+                )),
+            Positioned(
+                top: he * 0.2,
+                right: 16.0,
+                child: IconButton(
+                    onPressed: () async {
+                      await invitation(context);
+                    },
+                    icon: const Icon(
+                      Icons.share,
+                      size: 30,
+                    ))),
+            Positioned(
+                left: we * 0.73,
+                right: 0,
+                bottom: he * 0.36,
+                child: CircleAvatar(
+                  radius: 60,
+                  backgroundColor: Colors.transparent,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                          onPressed: () async {
+                            try {
+                              Users users = filteredUsers.firstWhere(
+                                  (user) => currentUser == user.name);
+                              LatLng location =
+                                  users.currentLocation.toLatLng();
+                              await getLocationProvider.getCurrentLocations(
+                                  location, mapController);
+                            } catch (e) {
+                              if (e is StateError) {
+                                print(
+                                    'No element found in filteredUsers that satisfies the condition');
+                              } else {
+                                print(e);
+                              }
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.location_on,
+                            size: 50,
+                          )),
+                      Expanded(
+                        child: Container(
+                          color: Colors.white54,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Text(
+                              currentUser,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 20),
+                            ),
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+                )),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: he * 0,
+              child: Padding(
+                padding: const EdgeInsets.all(10.0),
+                child: Container(
+                  width: we,
+                  height: he * 0.33,
+                  decoration: BoxDecoration(
+                      color: Colors.white70,
+                      borderRadius: BorderRadius.circular(12)
+                      //color: const Color.fromRGBO(255, 255, 255, 0.5),
+                      ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    // mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // const Center(child: Text("Friends")),
+                      ListTile(
+                        title: SizedBox(
+                          width: we,
+                          height: 50,
+                          //color: Colors.white,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              ElevatedButtons(
+                                text: "Friends",
+                                onPressed: () {
+                                  filterFriends("friends");
+                                },
+                              ),
+                              SizedBox(width: we * 0.01),
+
+                              ElevatedButtons(
+                                text: "Pending",
+                                onPressed: () {
+                                  filterFriends('Pending');
+                                },
+                              ),
+                              //const SizedBox(width: 30),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: he * 0.24,
+                        width: we,
+                        child: filteredFriends.isNotEmpty
+                            ? ListView.builder(
+                                itemCount: filteredFriends.length,
+                                itemBuilder: (context, index) {
+                                  final friend = filteredFriends[index];
+                                  return GestureDetector(
+                                    onTap: () async {
+                                      setState(() {
+                                        selectedIndex = index;
+                                      });
+                                      if (friend.request == true) {
+                                        await getLocationProvider
+                                            .getCurrentLocation(
+                                                index, mapController);
+                                        await getReceiversName.getReceiver(
+                                            index, currentUser);
+                                      } else {
+                                        showSnackBarWarning(
+                                            context, 'Friend Request pending');
+                                      }
+                                    },
+                                    child: buildRow(we, friend, context,
+                                        selectedIndex, index),
+                                  );
+                                },
+                              )
+                            : const Center(
+                                child: Text(
+                                  'Invite friends and Family to share Location to',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              ),
+                      )
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ));
   }
 
   Widget buildRow(
@@ -708,7 +783,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   placeholder: (context, url) =>
                       const Center(child: CircularProgressIndicator()),
                   errorWidget: (context, url, error) =>
-                      const Icon(Icons.person),
+                      const CircleAvatar(radius: 50, child: Icon(Icons.person)),
                 ),
               ),
             ),
@@ -748,17 +823,7 @@ class _MyHomePageState extends State<MyHomePage> {
             if (friend.request == true)
               Row(
                 children: [
-                  Container(
-                    width: 35,
-                    height: 35,
-                    decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(30),
-                        color: Colors.white70),
-                    child: const Center(
-                      child: Icon(Icons.delete),
-                    ),
-                  ),
-                  SizedBox(width: we * 0.03),
+                  SizedBox(width: we * 0.1),
                   Container(
                     width: 35,
                     height: 35,
@@ -768,10 +833,13 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: Center(
                         child: IconButton(
                       onPressed: () async {
-                        String current = await getAddressFromLatLng(
+                        List<String>lastLocation=[];
+                            String current = await getAddressFromLatLng(
                             friend.currentLocation.toLatLng());
-                        String prev = await getAddressFromLatLng(
-                            friend.previousLocation.toLatLng());
+                        for (var previousLocation in friend.previousLocation) {
+                          prev = await getAddressFromLatLng(previousLocation);
+                        return lastLocation.add(prev!);
+                        }
                         Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -783,7 +851,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                       id: currentUser == friend.name
                                           ? friend.senderId
                                           : friend.receiverId,
-                                      prevLocation: prev,
+                                      prevLocation: lastLocation,
                                       imageUrl: currentUser == friend.name
                                           ? friend.senderImage
                                           : friend.imageUrl,
@@ -798,5 +866,46 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
     );
+  }
+}
+class MarkerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    Paint paint = Paint()
+      ..color = Colors.red // Marker color
+      ..style = PaintingStyle.fill;
+
+    // Draw marker
+    Path path = Path();
+    path.moveTo(0, size.height * 0.25);
+    path.lineTo(size.width * 0.5, 0);
+    path.lineTo(size.width, size.height * 0.25);
+    path.lineTo(size.width * 0.5, size.height);
+    path.close();
+
+    canvas.drawPath(path, paint);
+
+    // Draw marker border
+    Paint borderPaint = Paint()
+      ..color = Colors.black // Border color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    canvas.drawPath(path, borderPaint);
+
+    // Draw circle
+    Paint circlePaint = Paint()
+      ..color = Colors.white // Circle color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+        Offset(size.width * 0.5, size.height * 0.25), 8, circlePaint);
+    canvas.drawCircle(
+        Offset(size.width * 0.5, size.height * 0.25), 10, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return false;
   }
 }

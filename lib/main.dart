@@ -67,7 +67,6 @@ class MyApp extends StatelessWidget {
               ),
             );
           } else if (snapshot.hasData && snapshot.data != null) {
-            // Do whatever you want with the user object here
             return const SplashScreen();
           } else {
             return const LoginScreen();

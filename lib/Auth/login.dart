@@ -38,7 +38,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     var we = MediaQuery.of(context).size.width;
     var he = MediaQuery.of(context).size.height;
-
+    final updateProvider =
+        Provider.of<GetLocationProvider>(context, listen: false);
     final provider = Provider.of<GoogleSignInProvider>(context, listen: false);
     return Scaffold(
       //appBar: AppBar(),
@@ -138,9 +139,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 10.0),
                           ElevatedButton(
                             onPressed: () async {
-                              final provider = Provider.of<GetLocationProvider>(
-                                  context,
-                                  listen: false);
                               String email = _emailController.text.trim();
                               String password = _passwordController.text.trim();
 
@@ -149,26 +147,26 @@ class _LoginScreenState extends State<LoginScreen> {
                                     await FirebaseAuth.instance
                                         .signInWithEmailAndPassword(
                                             email: email, password: password);
-
-                                // print('User signed in: ${userCredential.user!.displayName}');
-                                await provider.updateLocation(
+                                await updateProvider.updateLocation(
                                     currentId: userCredential.user!.uid,
                                     context: context);
                                 Navigator.pushReplacement(
                                   context,
-                                  MaterialPageRoute(builder: (context) => const SplashScreen()),
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const SplashScreen()),
                                 );
                               } catch (e) {
                                 print(e);
                                 if (e is FirebaseAuthException &&
                                     e.code == 'invalid-credential') {
                                   // Show SnackBar with error message
-                                  showSnackBarError(
-                                      context, 'Wrong Password');
+                                  showSnackBarError(context, 'Wrong Password');
                                 } else if (e is FirebaseAuthException &&
                                     e.code == 'user-not-found') {
                                   // Show SnackBar with error message
-                                  showSnackBarError(context, "User with this email doesn't exist.");
+                                  showSnackBarError(context,
+                                      "User with this email doesn't exist.");
                                 } else {
                                   showSnackBarError(context,
                                       'An error occurred. Please try again.');

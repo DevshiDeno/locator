@@ -23,8 +23,7 @@ class Messages extends StatefulWidget {
 }
 
 class _MessagesState extends State<Messages> {
-  final DatabaseReference ref =
-  FirebaseDatabase.instance.ref().child('shared');
+  final DatabaseReference ref = FirebaseDatabase.instance.ref().child('shared');
   final DatabaseReference _databaseReference =
       FirebaseDatabase.instance.ref().child('SOS');
 
@@ -44,7 +43,7 @@ class _MessagesState extends State<Messages> {
   bool isImportant = false;
 
   Future<void> getNotifications() async {
-    _requests=ref.onValue.listen((event) async {
+    _requests = ref.onValue.listen((event) async {
       if (event.snapshot.value != null) {
         try {
           Map<String, dynamic> dataList =
@@ -66,7 +65,7 @@ class _MessagesState extends State<Messages> {
         } catch (e) {}
       }
     });
-    _sos= _databaseReference.onValue.listen((event) async {
+    _sos = _databaseReference.onValue.listen((event) async {
       if (event.snapshot.value != null) {
         try {
           Map<String, dynamic> dataList =
@@ -92,7 +91,7 @@ class _MessagesState extends State<Messages> {
       }
     });
 
-    _shared= _reference.onValue.listen((event) async {
+    _shared = _reference.onValue.listen((event) async {
       final provider = Provider.of<CurrentUser>(context, listen: false);
       currentUser = await provider.getCurrentUserId();
       sendersName = await provider.getCurrentUserDisplayName();
@@ -128,9 +127,9 @@ class _MessagesState extends State<Messages> {
   @override
   void dispose() {
     super.dispose();
-  _requests?.cancel();
+    _requests?.cancel();
     _sos?.cancel();
-     _shared?.cancel();
+    _shared?.cancel();
   }
 
   @override
@@ -141,6 +140,7 @@ class _MessagesState extends State<Messages> {
         length: 3,
         child: Scaffold(
             appBar: AppBar(
+              automaticallyImplyLeading:false,
               centerTitle: true,
               title: const Text("Notifications"),
               bottom: const TabBar(
@@ -172,51 +172,28 @@ class _MessagesState extends State<Messages> {
                         sendersName: sendersName)
                     : const Center(child: Text('No Location requests')),
                 sosMessages.isNotEmpty
-                    ? Container(
-                        color: Colors.white24,
-                        width: double.infinity,
-                        height: he * 0.9,
-                        child: ListView.builder(
-                            itemCount: sosMessages.length,
-                            itemBuilder: (context, index) {
-                              final sos = sosMessages[index];
-                              return Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: ListTile(
-                                  title: Text(sos.sendersName),
-                                  subtitle: Text(sos.message),
-                                  leading: Text(DateFormat('HH:mm')
-                                      .format(DateTime.parse(sos.dateTime))),
-                                  trailing: ElevatedButton(
-                                    onPressed: () {},
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:Colors.redAccent
-                                    ),
-                                    child: const Text('Respond')
-                                  ),
-                                ),
-                              );
-                            }),
-                      )
+                    ? Emergency(
+                        he: he,
+                        sosMessages: sosMessages,
+                        currentUser: currentUser)
                     : const Center(child: Text('No emergency messages'))
               ],
             )));
   }
 }
 
-class SharedLocation extends StatelessWidget {
-  const SharedLocation({
+class Emergency extends StatelessWidget {
+  const Emergency({
     super.key,
     required this.he,
-    required this.messages,
+    required this.sosMessages,
     required this.currentUser,
-    required this.sendersName,
   });
 
   final double he;
-  final List<ShareLocation> messages;
+  final List<Sos> sosMessages;
   final String? currentUser;
-  final String? sendersName;
+
   Future<String> getAddressFromLatLng(position) async {
     try {
       List<Placemark> placeMarks = await placemarkFromCoordinates(
@@ -234,6 +211,141 @@ class SharedLocation extends StatelessWidget {
     }
   }
 
+  String formatTimeDifference(DateTime dateTime) {
+    Duration difference = DateTime.now().difference(dateTime);
+
+    if (difference.inSeconds < 60) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} minutes ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} hours ago';
+    } else if (difference.inDays < 6) {
+      return '${difference.inDays} days ago';
+    } else if (dateTime.month == DateTime.now().month + 1) {
+      return DateFormat('dd MMMM').format(dateTime);
+    } else {
+      return DateFormat('dd MMMM').format(dateTime);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white24,
+      width: double.infinity,
+      height: he * 0.9,
+      child: ListView.builder(
+          itemCount: sosMessages.length,
+          itemBuilder: (context, index) {
+            final sos = sosMessages[index];
+            return GestureDetector(
+              onTap: () async {
+                try {
+                  final locationListening =
+                      Provider.of<CurrentLocations>(context, listen: false);
+                  Set<Marker> markers = {};
+                  final polylineProvider =
+                      Provider.of<GetLocationProvider>(context, listen: false);
+                  final polyline = polylineProvider.polyline;
+                  final provider =
+                      Provider.of<AddFriend>(context, listen: false);
+                  provider.acceptLocationRequest(receiverId: currentUser!);
+
+                  LatLng? streamLocation =
+                      await locationListening.startListening();
+                  markers.add(
+                    Marker(
+                      markerId: MarkerId(sos.sendersName),
+                      position: sos.currentLocation.toLatLng(),
+                      infoWindow: InfoWindow(title: sos.sendersName),
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueOrange),
+                    ),
+                  );
+                  await polylineProvider.addPolyline(
+                      sos.currentLocation.toLatLng(), streamLocation);
+                  String currentLocation = await getAddressFromLatLng(
+                      sos.currentLocation.toLatLng());
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RoutesMap(
+                          currentLocation: currentLocation,
+                          user: sos.sendersName,
+                          polyline: polyline,
+                          markers: markers),
+                    ),
+                  );
+                } catch (e) {
+                  print(e);
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: ListTile(
+                    title: Text(sos.sendersName),
+                    subtitle: Text(sos.message),
+                    trailing: Text(
+                        formatTimeDifference(DateTime.parse(sos.dateTime)))),
+              ),
+            );
+          }),
+    );
+  }
+}
+
+class SharedLocation extends StatelessWidget {
+  SharedLocation({
+    super.key,
+    required this.he,
+    required this.messages,
+    required this.currentUser,
+    required this.sendersName,
+  });
+
+  final double he;
+  final List<ShareLocation> messages;
+  final String? currentUser;
+  final String? sendersName;
+
+  Future<String> getAddressFromLatLng(position) async {
+    try {
+      List<Placemark> placeMarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (placeMarks.isNotEmpty) {
+        return placeMarks[0].name ?? "Unknown Place";
+      } else {
+        return "No address information found";
+      }
+    } catch (e) {
+      // print("Error getting address: $e");
+      return "Error getting address";
+    }
+  }
+
+  final DateTime now = DateTime.now();
+
+  String formatTimeDifference(DateTime dateTime) {
+    Duration difference = DateTime.now().difference(dateTime);
+
+    if (difference.inSeconds < 60) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} minutes ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} hours ago';
+    } else if (difference.inDays < 6) {
+      return '${difference.inDays} days ago';
+    } else if (dateTime.month == DateTime.now().month + 1) {
+      return DateFormat('dd MMMM').format(dateTime);
+    } else {
+      return DateFormat('dd MMMM').format(dateTime);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -247,64 +359,63 @@ class SharedLocation extends StatelessWidget {
             final locationListening =
                 Provider.of<CurrentLocations>(context, listen: false);
             return Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: GestureDetector(
-                onTap: () async {
-                  try {
-                    Set<Marker> markers = {};
-                    final polylineProvider = Provider.of<GetLocationProvider>(
+                padding: const EdgeInsets.all(8.0),
+                child: GestureDetector(
+                  onTap: () async {
+                    try {
+                      Set<Marker> markers = {};
+                      final polylineProvider = Provider.of<GetLocationProvider>(
+                          context,
+                          listen: false);
+                      LatLng? streamLocation =
+                          await locationListening.startListening();
+
+                      await polylineProvider.addPolyline(
+                          message.currentLocation.toLatLng(), streamLocation);
+                      final polyline = polylineProvider.polyline;
+
+                      markers.add(
+                        Marker(
+                          markerId: MarkerId(message.sender),
+                          position: message.currentLocation.toLatLng(),
+                          infoWindow: InfoWindow(title: message.sender),
+                          icon: BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueGreen),
+                        ),
+                      );
+                      String currentLocation = await getAddressFromLatLng(
+                          message.currentLocation.toLatLng());
+                      Navigator.push(
                         context,
-                        listen: false);
-                    LatLng? streamLocation =
-                        await locationListening.startListening();
-
-                    await polylineProvider.addPolyline(
-                        message.currentLocation.toLatLng(), streamLocation);
-                    final polyline = polylineProvider.polyline;
-
-                    markers.add(
-                      Marker(
-                        markerId: MarkerId(message.sender),
-                        position: message.currentLocation.toLatLng(),
-                        infoWindow: InfoWindow(title: message.sender),
-                        icon: BitmapDescriptor.defaultMarkerWithHue(
-                            BitmapDescriptor.hueGreen),
-                      ),
-                    );
-                    String currentLocation=await getAddressFromLatLng(message.currentLocation.toLatLng());
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            RoutesMap(
+                        MaterialPageRoute(
+                          builder: (context) => RoutesMap(
                               polyline: polyline,
                               markers: markers,
                               user: message.sender,
                               currentLocation: currentLocation),
+                        ),
+                      );
+                    } catch (e) {
+                      showSnackBarError(
+                          context, 'Unable to find route, Try again later!');
+                      await locationListening.stopListening();
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      color: Colors.white,
+                    ),
+                    child: ListTile(
+                      title: Text(message.sender),
+                      subtitle: Text(message.message),
+                      trailing: Text(
+                        formatTimeDifference(DateTime.parse(message.dateTime)),
                       ),
-                    );
-                  } catch (e) {
-                    showSnackBarError(
-                        context, 'Unable to find route, Try again later!');
-                    await locationListening.stopListening();
-                    print('Error getting route: $e');
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    color: Colors.white,
+                    ),
                   ),
-                  child: ListTile(
-                    title: Text(message.sender),
-                    subtitle: Text(message.message),
-                    leading: Text(DateFormat('HH:mm')
-                        .format(DateTime.parse(message.dateTime))),
-                  ),
-                ),
-              ),
-            );
+                ));
           }),
     );
   }
@@ -323,6 +434,7 @@ class RequestedLocations extends StatelessWidget {
   final List<RequestLocation> messagesRequests;
   final String? currentUser;
   final String? sendersName;
+
   Future<String> getAddressFromLatLng(position) async {
     try {
       List<Placemark> placeMarks = await placemarkFromCoordinates(
@@ -337,6 +449,24 @@ class RequestedLocations extends StatelessWidget {
     } catch (e) {
       // print("Error getting address: $e");
       return "Error getting address";
+    }
+  }
+
+  String formatTimeDifference(DateTime dateTime) {
+    Duration difference = DateTime.now().difference(dateTime);
+
+    if (difference.inSeconds < 60) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} minutes ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} hours ago';
+    } else if (difference.inDays < 6) {
+      return '${difference.inDays} days ago';
+    } else if (dateTime.month == DateTime.now().month + 1) {
+      return DateFormat('dd MMMM').format(dateTime);
+    } else {
+      return DateFormat('dd MMMM').format(dateTime);
     }
   }
 
@@ -356,7 +486,7 @@ class RequestedLocations extends StatelessWidget {
               padding: const EdgeInsets.all(8.0),
               child: GestureDetector(
                 onDoubleTap: () async {
-                  if(message.isAccepted==false){
+                  if (message.isAccepted == false) {
                     try {
                       Set<Marker> markers = {};
                       final polylineProvider = Provider.of<GetLocationProvider>(
@@ -364,11 +494,11 @@ class RequestedLocations extends StatelessWidget {
                           listen: false);
                       final polyline = polylineProvider.polyline;
                       final provider =
-                      Provider.of<AddFriend>(context, listen: false);
+                          Provider.of<AddFriend>(context, listen: false);
                       provider.acceptLocationRequest(receiverId: currentUser!);
 
                       LatLng? streamLocation =
-                      await locationListening.startListening();
+                          await locationListening.startListening();
                       markers.add(
                         Marker(
                           markerId: MarkerId(message.sender),
@@ -380,27 +510,24 @@ class RequestedLocations extends StatelessWidget {
                       );
                       await polylineProvider.addPolyline(
                           message.currentLocation.toLatLng(), streamLocation);
-                      String currentLocation=await getAddressFromLatLng(message.currentLocation.toLatLng());
-                       Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                RoutesMap(
-                                    currentLocation: currentLocation,
-                                    user: message.sender,
-                                    polyline: polyline,
-                                    markers: markers)
-                            ,
-                          ),
-                        );
-
+                      String currentLocation = await getAddressFromLatLng(
+                          message.currentLocation.toLatLng());
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => RoutesMap(
+                              currentLocation: currentLocation,
+                              user: message.sender,
+                              polyline: polyline,
+                              markers: markers),
+                        ),
+                      );
                     } catch (e) {
                       print(e);
                     }
-                  }else{
-                    showSnackBarWarning(context,'Request Expired');
+                  } else {
+                    showSnackBarWarning(context, 'Request Expired');
                   }
-
                 },
                 child: Container(
                   padding: const EdgeInsets.all(2),
@@ -409,15 +536,12 @@ class RequestedLocations extends StatelessWidget {
                     color: Colors.white,
                   ),
                   child: ListTile(
-                    title: Text(message.sender),
-                    subtitle: Text(message.isAccepted == true
-                        ? 'request Accepted'
-                        : message.message),
-                    trailing:
-                        Text(DateFormat('HH:mm')
-                            .format(DateTime.parse(message.dateTime)))
-
-                  ),
+                      title: Text(message.sender),
+                      subtitle: Text(message.isAccepted == true
+                          ? 'request Accepted'
+                          : message.message),
+                      trailing: Text(formatTimeDifference(
+                          DateTime.parse(message.dateTime)))),
                 ),
               ),
             );

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
 
 import '../Components/SnackBar.dart';
+import 'package:locator/Components/Buttons.dart';
 
 class SignUp extends StatefulWidget {
   const SignUp({super.key});
@@ -58,6 +59,8 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
   Widget build(BuildContext context) {
     final provider = Provider.of<CurrentLocations>(context, listen: false);
     final userProvider = Provider.of<CurrentUser>(context, listen: false);
+    final googleProvider =
+        Provider.of<GoogleSignInProvider>(context, listen: false);
 
     return Scaffold(
       appBar: AppBar(
@@ -123,8 +126,7 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
                             borderSide: BorderSide(color: Colors.white),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderSide:
-                                BorderSide(color: Colors.grey.shade400),
+                            borderSide: BorderSide(color: Colors.grey.shade400),
                           ),
                           fillColor: Colors.grey.shade200,
                           filled: true,
@@ -132,7 +134,7 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
                           hintStyle: TextStyle(color: Colors.grey[500])),
                       onChanged: (value) {
                         // Update the _usernameController with the new value
-                        _usernameController.text = value;
+                        _usernameController.text = value.trim();
                       },
                     ),
                     const SizedBox(height: 16.0),
@@ -155,8 +157,12 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
                     ),
                     const SizedBox(height: 32.0),
                     ElevatedButton(
-                      onPressed: () {
-                        if (_formKey.currentState?.validate() ?? false) {
+                      onPressed: () async {
+                        bool isNameTaken = await userProvider
+                            .checkIfNameExists(_usernameController.text);
+                        // Add this line to check the value of isNameTaken
+                        if (_formKey.currentState!.validate() &&
+                            isNameTaken == false) {
                           showDialog(
                             context: context,
                             builder: (context) {
@@ -182,15 +188,14 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
                                             Position userPosition =
                                                 await provider
                                                     .determinePosition();
-                                            await provider.newUser(
+                                            await userProvider.newUser(
                                               context: context,
                                               name: _usernameController.text,
                                               email: _emailController.text,
                                               password:
                                                   _passwordController.text,
                                               latitude: userPosition.latitude,
-                                              longitude:
-                                                  userPosition.longitude,
+                                              longitude: userPosition.longitude,
                                               imageUrl: imageUrl,
                                             );
                                             setState(() {
@@ -208,18 +213,72 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
                                       ],
                                     );
                                   } else {
-                                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                                      showSnackBarError(context, 'Please Read and Accept the terms and Conditions');
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      showSnackBarError(context,
+                                          'Please Read and Accept the terms and Conditions');
                                     });
-                                  return Container();
+                                    return Container();
                                   }
                                 },
                               );
                             },
                           );
+                        } else {
+                          showSnackBarWarning(context,
+                              'UserName is already taken choose another one');
+                          setState(() {
+                            isNameTaken = false;
+                          });
                         }
                       },
                       child: const Text('Create Account'),
+                    ),
+                    Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Divider(
+                                  thickness: 0.5,
+                                  color: Colors.grey[400],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10.0),
+                                child: Text(
+                                  'Or continue with',
+                                  style: TextStyle(color: Colors.grey[700]),
+                                ),
+                              ),
+                              Expanded(
+                                child: Divider(
+                                  thickness: 0.5,
+                                  color: Colors.grey[400],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        GestureDetector(
+                            onTap: () async {
+                              if (accepted == true) {
+                                await googleProvider.signInWithGoogle(context);
+                                showSnackBar(context,
+                                    'Account Created');
+                              } else {
+                                showSnackBarError(context,
+                                    'Please Read and Accept the terms and Conditions');
+                              }
+                            },
+                            child: const SquareTile(
+                                imagePath: 'assets/google.png')),
+                        const SizedBox(height: 10),
+                      ],
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,

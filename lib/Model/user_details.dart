@@ -6,7 +6,7 @@ class Users {
   String imageUrl;
   String email;
   Locations currentLocation;
-  Locations previousLocation;
+  List <Locations> previousLocation;
 
   Users({
     required this.id,
@@ -18,13 +18,17 @@ class Users {
   });
 
   factory Users.fromMap(Map<String, dynamic> data) {
+    List<dynamic> previousLocationsData = data['previousLocation'] ?? [];
+    List<Locations> previousLocations =
+    previousLocationsData.map((locData) => Locations.fromMap(locData)).toList();
+
     return Users(
       id: data['id'] ?? '',
       name: data['name'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
       email: data['email'] ?? '',
       currentLocation: Locations.fromMap(data['currentLocation'] ?? {}),
-      previousLocation: Locations.fromMap(data['previousLocation'] ?? {}),
+      previousLocation: previousLocations,
     );
   }
 
@@ -36,7 +40,7 @@ class Friends {
   String senderName;
   String senderId;
   Locations currentLocation;
-  Locations previousLocation;
+  List <Locations> previousLocation;
   String receiverId;
   String imageUrl;
   String senderImage;
@@ -57,15 +61,18 @@ class Friends {
       required this.request});
 
   factory Friends.fromMap(Map<String, dynamic> data) {
+    List<dynamic> previousLocationsData = data['previousLocation'] ?? [];
+    List<Locations> previousLocation = previousLocationsData.map((locData) => Locations.fromMap(locData)).toList();
+
     return Friends(
       name: data['name'],
       senderName: data['senderName'],
       senderId: data['senderId'],
-      imageUrl: data['imageUrl'] ?? '',
+      imageUrl: data['imageUrl'],
       senderImage: data['senderImage'] ?? '',
       receiverId: data['receiverId'],
       currentLocation: Locations.fromMap(data['currentLocation'] ?? {}),
-      previousLocation: Locations.fromMap(data['previousLocation'] ?? {}),
+      previousLocation: previousLocation,
       request: data['request'],
     );
   }
