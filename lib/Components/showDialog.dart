@@ -20,7 +20,7 @@ Future<void> shareLocation(context) async {
   String requestMessage = '$currentUser sent you a Location request!';
   String message = 'shared Location with you!';
   bool isAccepted = false;
-  Position currentPosition = await provider.determinePosition();
+  Position currentPosition = await provider.determinePosition(context);
   if (receiver != null) {
     showDialog(
         context: context,
@@ -98,10 +98,9 @@ Future<void> _share(
     'dateTime': dateTime.toUtc().toString()
   }).then((_) async {
     final provider = Provider.of<AdMobProvider>(context, listen: false);
-   // await provider.interstitialAd();
+   await provider.interstitialAd();
     Future.delayed(const Duration(seconds: 2));
     showSnackBar(context, 'location shared');
-    //shares location
     Navigator.pop(context);
   }).catchError((error) {
     showSnackBarError(context, 'location not shared,Try again!');
@@ -129,7 +128,7 @@ Future<void> _request(
     'isAccepted': isAccepted
   }).then((_) async {
     final provider = Provider.of<AdMobProvider>(context, listen: false);
-   // await provider.interstitialAd();
+    await provider.interstitialAd();
     Future.delayed(const Duration(seconds: 2));
     showSnackBar(context, 'location requested');
     Navigator.pop(context);

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
-import 'dart:ui';
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:locator/Components/Buttons.dart';
 import 'package:locator/Components/SnackBar.dart';
@@ -16,15 +16,14 @@ import 'package:locator/Model/user_details.dart';
 import 'package:locator/Provider/Provider.dart';
 import 'package:locator/presentation/UserProfile.dart';
 import 'package:provider/provider.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:image/image.dart' as img;
+
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+  const MyHomePage({super.key, required this.currentPosition});
+
+  final LatLng? currentPosition;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -35,22 +34,29 @@ class _MyHomePageState extends State<MyHomePage> {
   int selectedIndex = 0;
   String currentUser = 'user';
   String? currentUserId;
-  LatLng currentPosition = const LatLng(-1.286389, 36.817223);
+  LatLng? currentPosition;
   GoogleMapController? mapController;
   final TextEditingController _controller = TextEditingController();
   BitmapDescriptor? customMarker;
   String? address;
   String? prev;
-  final TextEditingController controller = TextEditingController();
   List<Friends> filteredFriends = [];
   List<Users> matchingUsers = [];
   List<Users> filteredUsers = [];
   Users? userName;
   Set<Marker> _markers = {};
-
+  Set<Marker> mergedMarker = {};
   List<Users> filterUser = [];
   StreamSubscription? _users;
   StreamSubscription? _friends;
+  bool isSatelliteView = false;
+  List<String> lastLocation = [];
+
+  void _toggleMapType() {
+    setState(() {
+      isSatelliteView = !isSatelliteView;
+    });
+  }
 
   Future<String> getAddressFromLatLng(position) async {
     try {
@@ -100,27 +106,33 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> allUsers() async {
+    currentUserId = await Provider.of<CurrentUser>(context, listen: false)
+        .getCurrentUserId();
     currentUser = await Provider.of<CurrentUser>(context, listen: false)
         .getCurrentUserDisplayName();
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('users');
     _users = reference.onValue.listen((event) {
       if (event.snapshot.value != null) {
+        if (kDebugMode) {}
         try {
           Map<String, dynamic> dataList =
               jsonDecode(jsonEncode(event.snapshot.value));
+
           List<Users> users =
               dataList.values.map((item) => Users.fromMap(item)).toList();
           setState(() {
             Users.users = users;
             filteredUsers = List.from(Users.users);
             userName =
-                filteredUsers.firstWhere((user) => currentUser == user.name);
+                filteredUsers.firstWhere((user) => currentUserId == user.id);
+            mergeMarkers();
           });
         } catch (e) {
-          print('Error updating state: $e');
+          print('Error updating state of all users: $e');
         }
       }
+      _users?.cancel();
     });
   }
 
@@ -145,48 +157,20 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future<Position> determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return Future.error('Location services are disabled.');
-    }
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return Future.error('Location permissions are denied');
-      }
-    }
-    if (permission == LocationPermission.deniedForever) {
-      return Future.error(
-          'Location permissions are permanently denied, we cannot request permissions.');
-    }
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.bestForNavigation,
-    );
-    setState(() {
-      currentPosition = LatLng(position.latitude, position.longitude);
-    });
-    return position;
-  }
-
   Future<BitmapDescriptor> getCustomMarkerIcon(String imageUrl) async {
     const ImageConfiguration config = ImageConfiguration();
     final Completer<BitmapDescriptor> completer = Completer<BitmapDescriptor>();
 
     final ImageStream stream = NetworkImage(imageUrl).resolve(config);
-    stream.addListener(
-        ImageStreamListener((ImageInfo image, bool _) async {
+    stream.addListener(ImageStreamListener((ImageInfo image, bool _) async {
       final ByteData? byteData =
           await image.image.toByteData(format: ImageByteFormat.png);
       final Uint8List? pngBytes = byteData?.buffer.asUint8List();
       final List<int> compressedBytes =
           await FlutterImageCompress.compressWithList(
         pngBytes!,
-        minHeight: 80, // Adjust as needed
-        minWidth: 50, // Adjust as needed
+        minHeight: 80,
+        minWidth: 50,
         quality: 70,
       );
 
@@ -198,16 +182,14 @@ class _MyHomePageState extends State<MyHomePage> {
     return completer.future;
   }
 
-
-
   Future<void> mergeMarkers() async {
-    Set<Marker> mergedMarkers = {}; // Copy existing markers
     try {
+      mergedMarker.clear();
       await Future.forEach(Friends.friends, (friend) async {
         if (friend.request == true &&
             (currentUserId == friend.receiverId ||
                 friend.senderId == currentUserId)) {
-          mergedMarkers.add(Marker(
+          mergedMarker.add(Marker(
               markerId: MarkerId(
                   currentUser == friend.name ? friend.senderName : friend.name),
               position: friend.currentLocation.toLatLng(),
@@ -216,41 +198,40 @@ class _MyHomePageState extends State<MyHomePage> {
                     ? friend.senderName
                     : friend.name,
               ),
-              icon: await getCustomMarkerIcon(friend.imageUrl)
-
-              // BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose
-              // icon: await getMarkerIconFromUrl(user.imageUrl), // Replace with your image URL
-              //),
-              ));
+              // await getCustomMarkerIcon(friend.imageUrl)
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueRose)));
         }
       });
-      // setState(() {
-      //   _markers = mergedMarkers;
-      // });
     } catch (e) {
-      print(e);
+      if (kDebugMode) {
+        print(e);
+      }
     }
     await Future.forEach(Users.users, (user) async {
       if (currentUser == user.name) {
-        mergedMarkers.add(
+        mergedMarker.add(
           Marker(
               markerId: MarkerId(user.name),
               infoWindow:
                   InfoWindow(title: currentUser == user.name ? 'You' : ''),
-              icon: await getCustomMarkerIcon(user.imageUrl),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueMagenta),
+
+              // await getCustomMarkerIcon(user.imageUrl),
               position: user.currentLocation.toLatLng()),
         );
       }
     });
     setState(() {
-      _markers = mergedMarkers;
+      _markers = mergedMarker;
     });
   }
 
   @override
-  @override
   void initState() {
     super.initState();
+    currentPosition = widget.currentPosition;
     _loadFriends();
     allUsers();
     filterFriends('friends');
@@ -264,7 +245,6 @@ class _MyHomePageState extends State<MyHomePage> {
     _users?.cancel();
     mapController!.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     final searchProvider =
@@ -276,6 +256,7 @@ class _MyHomePageState extends State<MyHomePage> {
         Provider.of<GetReceiversName>(context, listen: false);
     var we = MediaQuery.of(context).size.width;
     var he = MediaQuery.of(context).size.height;
+
     return Scaffold(
         appBar: PreferredSize(
           preferredSize: const Size.fromHeight(0),
@@ -289,33 +270,23 @@ class _MyHomePageState extends State<MyHomePage> {
           children: [
             Positioned(
               top: 0,
-              // Start at the top
               left: 0,
               right: 0,
               bottom: 0,
               child: GoogleMap(
+
                   cloudMapId: 'cf2bb55d8b44b0bd',
-                  mapType: MapType.normal,
+                  mapType: isSatelliteView ? MapType.satellite : MapType.normal,
                   zoomControlsEnabled: false,
                   onMapCreated: (controller) async {
                     mapController = controller;
                   },
                   initialCameraPosition: CameraPosition(
-                    target: currentPosition,
-                    zoom: 8.0,
+                    target: currentPosition ?? const LatLng(0.0, 0.0),
+                    zoom: isSatelliteView ? 16 : 18,
                   ),
-                  markers: _markers
-              ),
+                  markers: _markers),
             ),
-      // Center(
-      //   child: Container(
-      //     width: 50,
-      //     height: 80,
-      //     child: CustomPaint(
-      //       painter: MarkerPainter(),
-      //     ),
-      //   ),
-      // ),
             Positioned(
               top: 0,
               left: 0,
@@ -334,12 +305,11 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: GestureDetector(
                           onTap: () async {
                             if (userName?.id != null) {
-                              List<String>lastLocation=[];
                               for (var previousLocation
                                   in userName!.previousLocation) {
                                 prev = await getAddressFromLatLng(
                                     previousLocation);
-                                return lastLocation.add(prev!);
+                                lastLocation.add(prev!);
                               }
                               getAddressFromLatLng(
                                       userName?.currentLocation.toLatLng())
@@ -356,21 +326,19 @@ class _MyHomePageState extends State<MyHomePage> {
                                     ),
                                   ),
                                 );
+                                lastLocation.clear();
                               }).catchError((e) {
                                 print(e);
                               });
                             } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text("User not logged In")));
+                              showSnackBarError(context, 'User not logged In');
                             }
                           },
                           child: CircleAvatar(
                             backgroundColor: Colors.blueGrey,
                             radius: 25,
                             child: CachedNetworkImage(
-                              imageUrl: userName?.imageUrl ??
-                                  'https://source.unsplash.com/user/wsanter',
+                              imageUrl: userName?.imageUrl ?? 'assets/error.png',
                               imageBuilder: (context, imageProvider) =>
                                   CircleAvatar(
                                 radius: 22,
@@ -534,6 +502,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                                             imageUrl:
                                                                 searchedUser
                                                                     .imageUrl,
+                                                            context: context,
                                                           );
                                                           setState(() {
                                                             filterUser.clear();
@@ -603,14 +572,19 @@ class _MyHomePageState extends State<MyHomePage> {
             Positioned(
                 top: he * 0.2,
                 right: 16.0,
-                child: IconButton(
-                    onPressed: () async {
-                      await invitation(context);
-                    },
-                    icon: const Icon(
-                      Icons.share,
-                      size: 30,
-                    ))),
+                child: CircleAvatar(
+                  backgroundColor:
+                      isSatelliteView ? Colors.white : Colors.lightGreenAccent,
+                  radius: 25,
+                  child: IconButton(
+                      onPressed: () async {
+                        _toggleMapType();
+                      },
+                      icon: const Icon(
+                        Icons.layers,
+                        size: 30,
+                      )),
+                )),
             Positioned(
                 left: we * 0.73,
                 right: 0,
@@ -633,10 +607,14 @@ class _MyHomePageState extends State<MyHomePage> {
                                   location, mapController);
                             } catch (e) {
                               if (e is StateError) {
-                                print(
-                                    'No element found in filteredUsers that satisfies the condition');
+                                if (kDebugMode) {
+                                  print(
+                                      'No element found in filteredUsers that satisfies the condition');
+                                }
                               } else {
-                                print(e);
+                                if (kDebugMode) {
+                                  print(e);
+                                }
                               }
                             }
                           },
@@ -645,15 +623,16 @@ class _MyHomePageState extends State<MyHomePage> {
                             size: 50,
                           )),
                       Expanded(
-                        child: Container(
-                          color: Colors.white54,
-                          child: Padding(
-                            padding: const EdgeInsets.all(4.0),
-                            child: Text(
-                              currentUser,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 20),
-                            ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4.0),
+                          child: Text(
+                            currentUser,
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 25,
+                                color: isSatelliteView
+                                    ? Colors.black87
+                                    : Colors.black),
                           ),
                         ),
                       )
@@ -671,14 +650,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   height: he * 0.33,
                   decoration: BoxDecoration(
                       color: Colors.white70,
-                      borderRadius: BorderRadius.circular(12)
-                      //color: const Color.fromRGBO(255, 255, 255, 0.5),
-                      ),
+                      borderRadius: BorderRadius.circular(12)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     // mainAxisSize: MainAxisSize.min,
                     children: [
-                      // const Center(child: Text("Friends")),
                       ListTile(
                         title: SizedBox(
                           width: we,
@@ -772,10 +748,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   imageUrl: (currentUser == friend.name)
                       ? (friend.senderImage.isNotEmpty
                           ? friend.senderImage
-                          : 'https://source.unsplash.com/user/wsanter')
-                      : (friend.imageUrl.isNotEmpty
-                          ? friend.imageUrl
-                          : 'https://source.unsplash.com/user/wsanter'),
+                          : '')
+                      : (friend.imageUrl.isNotEmpty ? friend.imageUrl : 'assets/error.png'),
                   imageBuilder: (context, imageProvider) => CircleAvatar(
                     radius: 50,
                     backgroundImage: imageProvider,
@@ -833,12 +807,11 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: Center(
                         child: IconButton(
                       onPressed: () async {
-                        List<String>lastLocation=[];
-                            String current = await getAddressFromLatLng(
+                        String current = await getAddressFromLatLng(
                             friend.currentLocation.toLatLng());
                         for (var previousLocation in friend.previousLocation) {
                           prev = await getAddressFromLatLng(previousLocation);
-                        return lastLocation.add(prev!);
+                           lastLocation.add(prev!);
                         }
                         Navigator.push(
                             context,
@@ -866,46 +839,5 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
     );
-  }
-}
-class MarkerPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    Paint paint = Paint()
-      ..color = Colors.red // Marker color
-      ..style = PaintingStyle.fill;
-
-    // Draw marker
-    Path path = Path();
-    path.moveTo(0, size.height * 0.25);
-    path.lineTo(size.width * 0.5, 0);
-    path.lineTo(size.width, size.height * 0.25);
-    path.lineTo(size.width * 0.5, size.height);
-    path.close();
-
-    canvas.drawPath(path, paint);
-
-    // Draw marker border
-    Paint borderPaint = Paint()
-      ..color = Colors.black // Border color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-
-    canvas.drawPath(path, borderPaint);
-
-    // Draw circle
-    Paint circlePaint = Paint()
-      ..color = Colors.white // Circle color
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(
-        Offset(size.width * 0.5, size.height * 0.25), 8, circlePaint);
-    canvas.drawCircle(
-        Offset(size.width * 0.5, size.height * 0.25), 10, borderPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
   }
 }

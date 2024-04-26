@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
-
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -16,12 +18,12 @@ import 'package:motion_tab_bar/MotionTabBar.dart';
 import 'package:motion_tab_bar/MotionTabBarController.dart';
 import 'package:provider/provider.dart';
 
-class Home extends StatefulWidget {
-  final Set<Marker>? markers;
-  final String? user;
-  final Set<Polyline>? polylines;
+import '../Auth/ad_helper.dart';
 
-  const Home({super.key, this.polylines, this.user, this.markers});
+class Home extends StatefulWidget {
+  final LatLng? currentPosition;
+
+  const Home({super.key, this.currentPosition});
 
   @override
   State<Home> createState() => _HomeState();
@@ -33,7 +35,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   late final List<Widget> screens;
   MotionTabBarController? _motionTabBarController;
   bool showBadge = true;
-  int friendsCount = 0;
+  int friendCount = 0;
+  int locationRequestCount = 0;
   List<Users> filteredUsers = [];
   Users? userName;
   String currentUser = 'user';
@@ -41,27 +44,33 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   String? previous;
   BannerAd? _bannerAd;
   bool _isLoaded = false;
-  final adUnitId = 'ca-app-pub-9922819544973761/3118792741';
-   Future<int>? user;
+  Future<int>? user;
   Future<int>? _user;
-  List<String>lastLocation=[];
+  List<String> lastLocation = [];
+  StreamSubscription? _usersLoaded;
 
   void loadAd() {
-    _bannerAd = BannerAd(
+    try {
+      _bannerAd = BannerAd(
         size: AdSize.banner,
-        adUnitId: adUnitId,
-        listener: BannerAdListener(onAdLoaded: (ad) {
-          print('$ad loaded');
-          setState(() {
-            _isLoaded = true;
-          });
-        }, onAdFailedToLoad: (ad, err) {
-          print('failed to load $err');
-          ad.dispose();
-        }),
-        request: const AdManagerAdRequest()
-    );
-    _bannerAd?.load();
+        adUnitId: AdHelper.bannerAdUnitId,
+        listener: BannerAdListener(
+          onAdLoaded: (ad) {
+            setState(() {
+              _isLoaded = true;
+            });
+          },
+          onAdFailedToLoad: (ad, err) {
+            print('failed to load $err');
+            ad.dispose();
+          },
+        ),
+        request: const AdManagerAdRequest(),
+      );
+      _bannerAd?.load();
+    } catch (e, stackTrace) {
+      // Handle the error gracefully, e.g., display a fallback UI or log the error.
+    }
   }
 
   Future<void> allUsers() async {
@@ -69,7 +78,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
         .getCurrentUserDisplayName();
     final DatabaseReference reference =
         FirebaseDatabase.instance.ref().child('users');
-    reference.onValue.listen((event) async {
+    _usersLoaded = reference.onValue.listen((event) async {
       if (event.snapshot.value != null) {
         try {
           Map<String, dynamic> dataList =
@@ -84,7 +93,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
           });
 
           current = await getAddressFromLatLng(userName!.currentLocation);
-          for(var previousLocation in userName!.previousLocation){
+          for (var previousLocation in userName!.previousLocation) {
             previous = await getAddressFromLatLng(previousLocation);
             return lastLocation.add(previous!);
           }
@@ -92,18 +101,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
           print('Error updating state: $e');
         }
       }
+      _usersLoaded?.cancel();
     });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    //loadAd();
-    allUsers();
-    _motionTabBarController = MotionTabBarController(
-        initialIndex: currentIndex, length: 4, vsync: this);
-    user= AddFriend().loadFriendRequestsCount(context);
-    _user= AddFriend().getNotificationCount(context);
   }
 
   Future<String> getAddressFromLatLng(position) async {
@@ -118,58 +117,71 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
         return "No address information found";
       }
     } catch (e) {
-      // print("Error getting address: $e");
       return "Error getting address";
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
+      if (!isAllowed) {
+        AwesomeNotifications().requestPermissionToSendNotifications();
+      }
+    });
+    //loadAd();
+    allUsers();
+    _motionTabBarController = MotionTabBarController(
+        initialIndex: currentIndex, length: 4, vsync: this);
+    user = AddFriend().loadFriendRequestsCount(context);
+    _user = AddFriend().getNotificationCount(context);
   }
 
   @override
   void dispose() {
     super.dispose();
     _motionTabBarController!.dispose();
+    _bannerAd?.dispose();
+    _usersLoaded?.cancel();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        body:
-            Stack(
-              children: [
-                TabBarView(
-                    physics: const NeverScrollableScrollPhysics(),
-                    controller: _motionTabBarController,
-                    children: [
-                      const MyHomePage(),
-                      const Messages(),
-                      const Friend(),
-                      Profile(
-                        user: userName?.name ?? '',
-                        currentLocation: current ?? '',
-                        id: userName?.id ?? '',
-                        prevLocation:  lastLocation ?? [],
-                        imageUrl: userName?.imageUrl ?? '',
+        body: Stack(
+          children: [
+            TabBarView(
+                physics: const NeverScrollableScrollPhysics(),
+                controller: _motionTabBarController,
+                children: [
+                  MyHomePage(currentPosition: widget.currentPosition),
+                  const Messages(),
+                  const Friend(),
+                  Profile(
+                    user: userName?.name ?? '',
+                    currentLocation: current ?? '',
+                    id: userName?.id ?? '',
+                    prevLocation: lastLocation,
+                    imageUrl: userName?.imageUrl ?? '',
+                  ),
+                ]),
+            if (_bannerAd != null)
+              Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SafeArea(
+                      child: SizedBox(
+                        width: _bannerAd!.size.width.toDouble(),
+                        height: _bannerAd!.size.height.toDouble(),
+                        child: AdWidget(ad: _bannerAd!),
                       ),
-                    ]
-                ),
-                if(_bannerAd!=null)
-                Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child:  Align(
-                      alignment: Alignment.bottomCenter,
-                      child: SafeArea(
-                        child: SizedBox(
-                          width: _bannerAd!.size.width.toDouble(),
-                          height: _bannerAd!.size.height.toDouble(),
-                          child: AdWidget(ad: _bannerAd!),
-                        ),
-                      ),
-                    )
-                ),
-              ],
-            ),
-
+                    ),
+                  )),
+          ],
+        ),
         bottomNavigationBar: MotionTabBar(
           controller: _motionTabBarController,
           initialSelectedTab: 'Home',
@@ -178,13 +190,14 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
           badges: [
             null,
             FutureBuilder<int>(
-              future:_user,
+              future: _user,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Text('');
                 } else if (snapshot.hasError) {
                   return const Icon(Icons.error_outline);
                 } else if (snapshot.hasData && snapshot.data != 0) {
+                  locationRequestCount = snapshot.data!;
                   return Container(
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
@@ -192,8 +205,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                     ),
                     padding: const EdgeInsets.all(2),
                     child: Text(
-                      snapshot.data.toString(),
-                      // Display the friend request count
+                      locationRequestCount.toString(),
                       style: const TextStyle(
                         fontSize: 14,
                         color: Colors.white,
@@ -213,16 +225,17 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                 } else if (snapshot.hasError) {
                   return const Icon(Icons.error_outline);
                 } else if (snapshot.hasData && snapshot.data != 0) {
+                  friendCount = snapshot.data!;
+                print(friendCount);
                   return Container(
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.deepOrange,
                     ),
-                    padding: EdgeInsets.all(2),
+                    padding: const EdgeInsets.all(2),
                     child: Text(
-                      snapshot.data.toString(),
-                      // Display the friend request count
-                      style: TextStyle(
+                      friendCount.toString(),
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.white,
                       ),
@@ -254,8 +267,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
               showBadge = false;
             });
           },
-        )
-    );
+        ));
   }
 
   final List<IconData> listOfIcons = [
@@ -265,5 +277,4 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     Icons.person_pin,
   ];
   final List<String> iconTitles = ['Home', 'Messages', 'Friends', 'Profile'];
-  final List<Widget> badges = [];
 }

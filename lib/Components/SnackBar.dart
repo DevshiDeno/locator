@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 void showSnackBar(BuildContext context, String message){
   final snackBar = SnackBar(
-    elevation: 100,
+    elevation: 0,
     behavior: SnackBarBehavior.floating,
     backgroundColor: Colors.transparent,
     content: AwesomeSnackbarContent(
@@ -27,6 +27,7 @@ void showSnackBarError(BuildContext context, String message){
       contentType: ContentType.failure,
       inMaterialBanner: true,
     ),
+
   );
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -43,6 +44,7 @@ void showSnackBarWarning(BuildContext context, String message){
       contentType: ContentType.warning,
       inMaterialBanner: true,
     ),
+    showCloseIcon:true
   );
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -59,6 +61,7 @@ void showSnackBarSos(BuildContext context, String message){
       contentType: ContentType.help,
       inMaterialBanner: true,
     ),
+    dismissDirection: DismissDirection.startToEnd,
   );
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()

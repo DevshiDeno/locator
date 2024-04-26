@@ -57,15 +57,11 @@ StreamSubscription? loadFriendsSubscription;
             friendsRequestCount = filteredRequest
                 .where((request) => isAccepted == request.request)
                 .length;
-            if (kDebugMode) {
-              print(friendsRequestCount);
-            }
           });
-          // print(currentUser);
-        } catch (e) {
-          print('Error updating state: $e');
-        }
+        } catch (e) {}
       }
+     // loadFriendsSubscription?.cancel();
+
     });
   }
 
@@ -74,6 +70,7 @@ StreamSubscription? loadFriendsSubscription;
     super.initState();
     loadFriends();
   }
+  @override
   void dispose(){
     super.dispose();
   loadFriendsSubscription?.cancel();
@@ -102,7 +99,7 @@ StreamSubscription? loadFriendsSubscription;
           ),
           body: TabBarView(children: [
             filteredRequest.isNotEmpty
-                ? FriendsRequest(we: we, he: he, filteredRequest: filteredRequest, friendProvider: friendProvider)
+                ? FriendsRequest(we: we, he: he, filteredRequest: filteredRequest, friendProvider: friendProvider, receiversName: receiversName,)
                 : const Center(child: Text('Friend request will appear here')),
             filteredFriendsList.isNotEmpty
                 ? FriendsList(we: we, he: he, filteredFriendsList: filteredFriendsList, receiversName: receiversName)
@@ -119,12 +116,15 @@ class FriendsRequest extends StatelessWidget {
     required this.he,
     required this.filteredRequest,
     required this.friendProvider,
+    required this.receiversName,
+
   });
 
   final double we;
   final double he;
   final List<Friends> filteredRequest;
   final AddFriend friendProvider;
+  final String? receiversName;
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +142,8 @@ class FriendsRequest extends StatelessWidget {
                     color: Colors.white,
                     child: ListTile(
                         // leading: CachedNetworkImage(
-                        //   imageUrl: friend.imageUrl ,
+                        //     imageUrl:receiversName == friend.senderName ? friend.imageUrl
+                        //         :friend.senderImage,
                         //   imageBuilder: (context, imageProvider) =>
                         //       CircleAvatar(
                         //     radius: 35,
@@ -166,6 +167,7 @@ class FriendsRequest extends StatelessWidget {
                                 onPressed: () async {
                                   await friendProvider.acceptFriend(
                                       senderId: friend.senderId);
+                                  await friendProvider.friendsRequestCount--;
                                 },
                                 child: const Text('Accept')))),
               );
@@ -215,7 +217,8 @@ class FriendsList extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
                         CachedNetworkImage(
-                          imageUrl: friend.imageUrl,
+                          imageUrl:receiversName == friend.senderName ? friend.imageUrl
+                          :friend.senderImage,
                           imageBuilder: (context, imageProvider) =>
                               CircleAvatar(
                             radius: 30,
@@ -282,8 +285,7 @@ class FriendsList extends StatelessWidget {
                                                     'Remove')),
                                             ElevatedButton(
                                                 onPressed: () {
-                                                  Navigator.pop(
-                                                      context);
+                                                  Navigator.pop(context);
                                                 },
                                                 child: const Text(
                                                     'cancel'))

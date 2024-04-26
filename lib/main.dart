@@ -1,3 +1,4 @@
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -11,15 +12,40 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 void main() async {
   WidgetsFlutterBinding
-      .ensureInitialized(); // Ensure that Flutter is initialized before calling Firebase.initializeApp()
-  MobileAds.instance.updateRequestConfiguration(RequestConfiguration(
-      testDeviceIds: ['58BFAEB40298D57FC29E534656FD2755']));
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await FirebaseAppCheck.instance.activate(
-    webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
-    androidProvider: AndroidProvider.debug,
-    appleProvider: AppleProvider.appAttest,
+      .ensureInitialized();
+
+   AwesomeNotifications().initialize(
+      //null,
+       'resource://mipmap/find',
+      [
+        NotificationChannel(
+            channelKey: 'alerts',
+            channelName: 'Alerts',
+            channelDescription: 'Notification alerts',
+            playSound: true,
+          onlyAlertOnce: true,
+         //   groupAlertBehavior: GroupAlertBehavior.Children,
+            importance: NotificationImportance.High,
+            defaultPrivacy: NotificationPrivacy.Private,
+            defaultColor: Colors.deepPurple,
+            ledColor: Colors.deepPurple)
+      ],
+     // debug: true
+   );
+  MobileAds.instance.updateRequestConfiguration
+    (
+      RequestConfiguration(
+      testDeviceIds: [
+       '58BFAEB40298D57FC29E534656FD2755'
+      ])
   );
+  MobileAds.instance.initialize();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // await FirebaseAppCheck.instance.activate(
+  //   webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
+  //   androidProvider: AndroidProvider.debug,
+  //   appleProvider: AppleProvider.appAttest,
+  // );
 
   runApp(
     MultiProvider(
@@ -67,7 +93,7 @@ class MyApp extends StatelessWidget {
               ),
             );
           } else if (snapshot.hasData && snapshot.data != null) {
-            return const SplashScreen();
+            return  SplashScreen();
           } else {
             return const LoginScreen();
           }

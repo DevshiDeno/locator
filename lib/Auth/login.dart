@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:locator/Auth/Create_account.dart';
 import 'package:locator/Auth/resetPassword.dart';
 import 'package:locator/Components/Buttons.dart';
@@ -26,7 +27,8 @@ class _LoginScreenState extends State<LoginScreen> {
   User? user;
   final _formKey = GlobalKey<FormState>();
   bool isLoading = false;
-
+  final GoogleSignIn googleSignIn = GoogleSignIn();
+  GoogleSignInAccount? _user = GoogleSignIn().currentUser;
   @override
   void dispose() {
     _passwordController.dispose();
@@ -41,6 +43,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final updateProvider =
         Provider.of<GetLocationProvider>(context, listen: false);
     final provider = Provider.of<GoogleSignInProvider>(context, listen: false);
+    final userprovider = Provider.of<CurrentUser>(context, listen: false);
+
     return Scaffold(
       //appBar: AppBar(),
 
@@ -150,14 +154,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 await updateProvider.updateLocation(
                                     currentId: userCredential.user!.uid,
                                     context: context);
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) =>
-                                          const SplashScreen()),
-                                );
-                              } catch (e) {
-                                print(e);
+                               if(userCredential.user!.emailVerified) {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                             SplashScreen()),
+                                  );
+                                }else{
+                                 showSnackBarWarning(context, 'Email verification required');
+                               }
+                              }catch (e) {
                                 if (e is FirebaseAuthException &&
                                     e.code == 'invalid-credential') {
                                   // Show SnackBar with error message
@@ -189,38 +196,38 @@ class _LoginScreenState extends State<LoginScreen> {
               top: 570,
               child: Column(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 25.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Divider(
-                            thickness: 0.5,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                          child: Text(
-                            'Or continue with',
-                            style: TextStyle(color: Colors.grey[700]),
-                          ),
-                        ),
-                        Expanded(
-                          child: Divider(
-                            thickness: 0.5,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  // Padding(
+                  //   padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                  //   child: Row(
+                  //     children: [
+                  //       Expanded(
+                  //         child: Divider(
+                  //           thickness: 0.5,
+                  //           color: Colors.grey[400],
+                  //         ),
+                  //       ),
+                  //       Padding(
+                  //         padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                  //         child: Text(
+                  //           'Or continue with',
+                  //           style: TextStyle(color: Colors.grey[700]),
+                  //         ),
+                  //       ),
+                  //       Expanded(
+                  //         child: Divider(
+                  //           thickness: 0.5,
+                  //           color: Colors.grey[400],
+                  //         ),
+                  //       ),
+                  //     ],
+                  //   ),
+                  // ),
                   const SizedBox(height: 30),
-                  GestureDetector(
-                      onTap: () async {
-                        await provider.signInWithGoogle(context);
-                      },
-                      child: const SquareTile(imagePath: 'assets/google.png')),
+                  // GestureDetector(
+                  //     onTap: () async {
+                  //       await provider.signUpWithGoogle(context);
+                  //     },
+                  //     child: const SquareTile(imagePath: 'assets/google.png')),
                   const SizedBox(height: 30),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

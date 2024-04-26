@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 
@@ -13,8 +14,10 @@ class RoutesMap extends StatefulWidget {
       required this.polyline,
       required this.markers,
       required this.user,
-      required this.currentLocation});
+      required this.currentLocation,
+      required this.currentPosition});
 
+  final Position currentPosition;
   final String currentLocation;
   final String user;
   final Set<Polyline>? polyline;
@@ -30,7 +33,6 @@ class _RoutesMapState extends State<RoutesMap> {
   Set<Marker> _markers = {};
   Set<Polyline> _polyLines = {};
   String? currentUser;
-  LatLng currentPosition = const LatLng(-1.286389, 36.817223);
 
   Future<void> mergeMarkers() async {
     final currentId = await Provider.of<CurrentUser>(context, listen: false)
@@ -46,7 +48,7 @@ class _RoutesMapState extends State<RoutesMap> {
           Marker(
             markerId: MarkerId(user.id),
             position: user.currentLocation.toLatLng(),
-            infoWindow: InfoWindow(title: user.name),
+            infoWindow: const InfoWindow(title: 'You'),
             icon: BitmapDescriptor.defaultMarker,
           ),
         );
@@ -87,8 +89,11 @@ class _RoutesMapState extends State<RoutesMap> {
                 mapController = controller;
               },
               initialCameraPosition: CameraPosition(
-                target: currentPosition,
-                zoom: 8.0,
+                target: LatLng(
+                    widget.currentPosition.latitude,
+                    widget.currentPosition.longitude
+                ),
+                zoom: 12.0,
               ),
               polylines: _polyLines,
               markers: _markers),

@@ -50,30 +50,41 @@ class _ProfileState extends State<Profile> {
   bool added = false;
   bool respond = false;
   final DatabaseReference ref = FirebaseDatabase.instance.ref().child('users');
-  StreamSubscription? _location;
+  StreamSubscription? subscription;
   StreamSubscription? _friends;
   final picker = ImagePicker();
 
   Future<void> locationHistory() async {
+    List<Locations> lastLocation = [];
+
     lastPosition = await Geolocator.getLastKnownPosition();
     if (lastPosition != null) {
-      _location = ref.onValue.listen((event) {
+       subscription = ref.onValue.listen((event) {
         final data = event.snapshot.value as Map<dynamic, dynamic>?;
         data?.forEach((key, value) {
           if (value['id'] == currentUser) {
+            Locations newLocation = Locations(
+              latitude: lastPosition!.latitude,
+              longitude: lastPosition!.longitude,
+            );
+            lastLocation.add(newLocation);
+            List<Map<String, dynamic>> previousLocationsJson = lastLocation
+                .map((location) => {
+              'latitude': location.latitude,
+              'longitude': location.longitude,
+            })
+                .toList();
             double previousLatitude = value['currentLocation']['latitude'];
             double previousLongitude = value['currentLocation']['longitude'];
             if (previousLatitude != lastPosition?.latitude ||
                 previousLongitude != lastPosition?.longitude) {
               ref.child(key).update({
-                'previousLocation': {
-                  'latitude': lastPosition?.latitude,
-                  'longitude': lastPosition?.longitude,
-                },
+                'previousLocation': previousLocationsJson
               });
             }
           }
         });
+        subscription?.cancel(); // Cancel the subscription after fetching initial data
       });
     }
   }
@@ -187,14 +198,13 @@ class _ProfileState extends State<Profile> {
     currentUserId();
     locationHistory();
     _loadFriends();
-    print(widget.prevLocation);
   }
 
   @override
   void dispose() {
     super.dispose();
-    _location?.cancel();
     _friends?.cancel();
+    subscription?.cancel();
   }
 
   @override

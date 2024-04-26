@@ -44,7 +44,6 @@ class Friends {
   String receiverId;
   String imageUrl;
   String senderImage;
-  String message;
   DateTime dateTime = DateTime.now();
   bool request;
 
@@ -57,7 +56,6 @@ class Friends {
       required this.currentLocation,
       required this.previousLocation,
       required this.receiverId,
-      this.message = '',
       required this.request});
 
   factory Friends.fromMap(Map<String, dynamic> data) {

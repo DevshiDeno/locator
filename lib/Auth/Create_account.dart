@@ -23,6 +23,7 @@ class _SignUpState extends State<SignUp> {
   final TextEditingController _passwordController = TextEditingController();
   bool accepted = false;
   final _formKey = GlobalKey<FormState>();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final String termsConditions = """
 Welcome to Find Me!
 
@@ -63,6 +64,7 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
         Provider.of<GoogleSignInProvider>(context, listen: false);
 
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         leading: IconButton(
             onPressed: () {
@@ -97,229 +99,229 @@ D&D reserves the right to monitor user activity and take appropriate action, inc
               ],
             ),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 230,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    TextFormField(
-                      controller: _usernameController,
-                      obscureText: false,
-                      validator: (value) {
-                        if (value!.isEmpty) {
-                          return 'UserName required';
-                        }
-                        if (value.length > 8) {
-                          return 'UserName must be at most 8 characters long';
-                        }
-                        return null;
-                      },
-                      decoration: InputDecoration(
-                          enabledBorder: const OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.grey.shade400),
-                          ),
-                          fillColor: Colors.grey.shade200,
-                          filled: true,
-                          labelText: 'Username',
-                          hintStyle: TextStyle(color: Colors.grey[500])),
-                      onChanged: (value) {
-                        // Update the _usernameController with the new value
-                        _usernameController.text = value.trim();
-                      },
-                    ),
-                    const SizedBox(height: 16.0),
-                    MyTextField(
-                      controller: _emailController,
-                      labelText: 'Email',
-                      obscureText: false,
-                      onChanged: (value) {
-                        _emailController.text = value.trim();
-                      },
-                    ),
-                    const SizedBox(height: 16.0),
-                    MyPasswordTextField(
-                      controller: _passwordController,
-                      labelText: 'Password',
-                      //obscureText: false,
-                      onChanged: (value) {
-                        _passwordController.text = value.trim();
-                      },
-                    ),
-                    const SizedBox(height: 32.0),
-                    ElevatedButton(
-                      onPressed: () async {
-                        bool isNameTaken = await userProvider
-                            .checkIfNameExists(_usernameController.text);
-                        // Add this line to check the value of isNameTaken
-                        if (_formKey.currentState!.validate() &&
-                            isNameTaken == false) {
-                          showDialog(
-                            context: context,
-                            builder: (context) {
-                              return FutureBuilder(
-                                future: provider.determinePosition(),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState ==
-                                      ConnectionState.waiting) {
-                                    return const Center(
-                                      child: CircularProgressIndicator(
-                                        color: Colors.orangeAccent,
-                                      ),
-                                    );
-                                  } else if (accepted == true) {
-                                    return AlertDialog(
-                                      title: const Text('Create Account'),
-                                      content: Text(
-                                          'Username: ${_usernameController.text}\nEmail: ${_emailController.text}\nPassword: ${_passwordController.text}'),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () async {
-                                            String imageUrl = '';
-                                            Position userPosition =
-                                                await provider
-                                                    .determinePosition();
-                                            await userProvider.newUser(
-                                              context: context,
-                                              name: _usernameController.text,
-                                              email: _emailController.text,
-                                              password:
-                                                  _passwordController.text,
-                                              latitude: userPosition.latitude,
-                                              longitude: userPosition.longitude,
-                                              imageUrl: imageUrl,
-                                            );
-                                            setState(() {
-                                              _emailController.text = '';
-                                            });
-                                          },
-                                          child: const Text('Create Account'),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            Navigator.pop(context);
-                                          },
-                                          child: const Text('Cancel'),
-                                        ),
-                                      ],
-                                    );
-                                  } else {
-                                    WidgetsBinding.instance
-                                        .addPostFrameCallback((_) {
-                                      showSnackBarError(context,
-                                          'Please Read and Accept the terms and Conditions');
-                                    });
-                                    return Container();
-                                  }
-                                },
-                              );
-                            },
-                          );
-                        } else {
-                          showSnackBarWarning(context,
-                              'UserName is already taken choose another one');
-                          setState(() {
-                            isNameTaken = false;
-                          });
-                        }
-                      },
-                      child: const Text('Create Account'),
-                    ),
-                    Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 25.0),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Divider(
-                                  thickness: 0.5,
-                                  color: Colors.grey[400],
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10.0),
-                                child: Text(
-                                  'Or continue with',
-                                  style: TextStyle(color: Colors.grey[700]),
-                                ),
-                              ),
-                              Expanded(
-                                child: Divider(
-                                  thickness: 0.5,
-                                  color: Colors.grey[400],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        GestureDetector(
-                            onTap: () async {
-                              if (accepted == true) {
-                                await googleProvider.signInWithGoogle(context);
-                                showSnackBar(context,
-                                    'Account Created');
-                              } else {
-                                showSnackBarError(context,
-                                    'Please Read and Accept the terms and Conditions');
-                              }
-                            },
-                            child: const SquareTile(
-                                imagePath: 'assets/google.png')),
-                        const SizedBox(height: 10),
-                      ],
-                    ),
-                    Row(
+             Positioned(
+              left: 0,
+              right: 0,
+              top: 230,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(accepted
-                            ? Icons.check_box_sharp
-                            : Icons.check_box_outline_blank),
-                        TextButton(
-                            onPressed: () {
+                        TextFormField(
+                          controller: _usernameController,
+                          obscureText: false,
+                          validator: (value) {
+                            if (value!.isEmpty) {
+                              return 'UserName required';
+                            }
+                            if (value.length > 8) {
+                              return 'UserName must be at most 8 characters long';
+                            }
+                            return null;
+                          },
+                          decoration: InputDecoration(
+                              enabledBorder: const OutlineInputBorder(
+                                borderSide: BorderSide(color: Colors.white),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: Colors.grey.shade400),
+                              ),
+                              fillColor: Colors.grey.shade200,
+                              filled: true,
+                              labelText: 'Username',
+                              hintStyle: TextStyle(color: Colors.grey[500])),
+                          onChanged: (value) {
+                            // Update the _usernameController with the new value
+                            _usernameController.text = value.trim();
+                          },
+                        ),
+                        const SizedBox(height: 16.0),
+                        MyTextField(
+                          controller: _emailController,
+                          labelText: 'Email',
+                          obscureText: false,
+                          onChanged: (value) {
+                            _emailController.text = value.trim();
+                          },
+                        ),
+                        const SizedBox(height: 16.0),
+                        MyPasswordTextField(
+                          controller: _passwordController,
+                          labelText: 'Password',
+                          //obscureText: false,
+                          onChanged: (value) {
+                            _passwordController.text = value.trim();
+                          },
+                        ),
+                        const SizedBox(height: 32.0),
+                        ElevatedButton(
+                          onPressed: () async {
+                            bool isNameTaken = await userProvider
+                                .checkIfNameExists(_usernameController.text);
+                                
+                            if (_formKey.currentState!.validate() &&
+                                isNameTaken == false) {
                               showDialog(
-                                  context: context,
-                                  builder: (context) {
-                                    return AlertDialog(
-                                      content: SingleChildScrollView(
-                                          child: Text(termsConditions)),
-                                      actions: [
-                                        TextButton(
-                                            onPressed: () {
-                                              setState(() {
-                                                accepted = true;
-                                              });
-                                              Navigator.pop(context);
-                                            },
-                                            child: const Text('Accept')),
-                                        TextButton(
-                                            onPressed: () {
-                                              Navigator.pop(context);
-                                            },
-                                            child: const Text('Cancel'))
-                                      ],
-                                    );
-                                  });
-                            },
-                            child: const Text('Terms & Conditions')),
+                                context: context,
+                                builder: (context) {
+                                  return FutureBuilder(
+                                    future: provider.determinePosition(context),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
+                                        return const Center(
+                                          child: CircularProgressIndicator(
+                                            color: Colors.orangeAccent,
+                                          ),
+                                        );
+                                      }
+                                      else if (accepted == true && snapshot.hasData) {
+                                        return AlertDialog(
+                                          title: const Text('Create Account'),
+                                          content: Text(
+                                              'Username: ${_usernameController.text}\nEmail: ${_emailController.text}\nPassword: ${_passwordController.text}'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () async {
+                                                String imageUrl = '';
+                                                await userProvider.newUser(
+                                                  context: context,
+                                                  name: _usernameController.text,
+                                                  email: _emailController.text,
+                                                  password:
+                                                      _passwordController.text,
+                                                  latitude: snapshot.data!.latitude,
+                                                  longitude: snapshot.data!.longitude,
+                                                  imageUrl: imageUrl,
+                                                );
+                                                setState(() {
+                                                  _emailController.text = '';
+                                                });
+                                              },
+                                              child: const Text('Create Account'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                              },
+                                              child: const Text('Cancel'),
+                                            ),
+                                          ],
+                                        );
+                                      } else if (accepted==false) {
+                                        WidgetsBinding.instance
+                                            .addPostFrameCallback((_) {
+                                          showSnackBarError(context,
+                                              'Please Read and Accept the terms and Conditions');
+                                        });
+                                        return Container();
+                                      }else{
+                                        return Container();
+                                      }
+                                    },
+                                  );
+                                },
+                              );
+                            } else if (isNameTaken == true) {
+                              showSnackBarWarning(context,
+                                  'UserName is already taken choose another one');
+                              setState(() {
+                                isNameTaken = false;
+                              });
+                            }
+                          },
+                          child: const Text('Create Account'),
+                        ),
+                        // Column(
+                        //   children: [
+                        //     Padding(
+                        //       padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                        //       child: Row(
+                        //         children: [
+                        //           Expanded(
+                        //             child: Divider(
+                        //               thickness: 0.5,
+                        //               color: Colors.grey[400],
+                        //             ),
+                        //           ),
+                        //           Padding(
+                        //             padding: const EdgeInsets.symmetric(
+                        //                 horizontal: 10.0),
+                        //             child: Text(
+                        //               'Or continue with',
+                        //               style: TextStyle(color: Colors.grey[700]),
+                        //             ),
+                        //           ),
+                        //           Expanded(
+                        //             child: Divider(
+                        //               thickness: 0.5,
+                        //               color: Colors.grey[400],
+                        //             ),
+                        //           ),
+                        //         ],
+                        //       ),
+                        //     ),
+                        //     const SizedBox(height: 10),
+                        //     GestureDetector(
+                        //         onTap: () async {
+                        //           if (accepted == true) {
+                        //             await googleProvider.signUpWithGoogle(context);
+                        //           } else {
+                        //             showSnackBarError(context,
+                        //                 'Please Read and Accept the terms and Conditions');
+                        //           }
+                        //         },
+                        //         child: const SquareTile(
+                        //             imagePath: 'assets/google.png')),
+                        //     const SizedBox(height: 10),
+                        //   ],
+                        // ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(accepted
+                                ? Icons.check_box_sharp
+                                : Icons.check_box_outline_blank),
+                            TextButton(
+                                onPressed: () {
+                                  showDialog(
+                                      context: context,
+                                      builder: (context) {
+                                        return AlertDialog(
+                                          content: SingleChildScrollView(
+                                              child: Text(termsConditions)),
+                                          actions: [
+                                            TextButton(
+                                                onPressed: () {
+                                                  setState(() {
+                                                    accepted = true;
+                                                  });
+                                                  Navigator.pop(context);
+                                                },
+                                                child: const Text('Accept')),
+                                            TextButton(
+                                                onPressed: () {
+                                                  Navigator.pop(context);
+                                                },
+                                                child: const Text('Cancel'))
+                                          ],
+                                        );
+                                      });
+                                },
+                                child: const Text('Terms & Conditions')),
+                          ],
+                        )
                       ],
-                    )
-                  ],
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+          
         ],
       ),
     );

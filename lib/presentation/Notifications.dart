@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -36,14 +37,16 @@ class _MessagesState extends State<Messages> {
   List<Users> userId = [];
   List<ShareLocation> messages = [];
   List<Sos> sosMessages = [];
-
   List<RequestLocation> messagesRequests = [];
   String? currentUser;
   String? sendersName;
   bool isImportant = false;
 
   Future<void> getNotifications() async {
-    _requests = ref.onValue.listen((event) async {
+    _shared = ref.onValue.listen((event) async {
+      final provider = Provider.of<CurrentUser>(context, listen: false);
+      currentUser = await provider.getCurrentUserId();
+      sendersName = await provider.getCurrentUserDisplayName();
       if (event.snapshot.value != null) {
         try {
           Map<String, dynamic> dataList =
@@ -59,13 +62,16 @@ class _MessagesState extends State<Messages> {
                     sendersName != sender.sender)
                 .toList();
           });
-          final provider = Provider.of<CurrentUser>(context, listen: false);
-          currentUser = await provider.getCurrentUserId();
-          sendersName = await provider.getCurrentUserDisplayName();
-        } catch (e) {}
+        } catch (e) {
+          showSnackBarError(context, "Error getting  shared locations");
+        }
       }
+      _shared?.cancel();
     });
     _sos = _databaseReference.onValue.listen((event) async {
+      final provider = Provider.of<CurrentUser>(context, listen: false);
+      currentUser = await provider.getCurrentUserId();
+      sendersName = await provider.getCurrentUserDisplayName();
       if (event.snapshot.value != null) {
         try {
           Map<String, dynamic> dataList =
@@ -84,14 +90,12 @@ class _MessagesState extends State<Messages> {
               }
             }
           });
-          final provider = Provider.of<CurrentUser>(context, listen: false);
-          currentUser = await provider.getCurrentUserId();
-          sendersName = await provider.getCurrentUserDisplayName();
         } catch (e) {}
       }
+      _sos?.cancel();
     });
 
-    _shared = _reference.onValue.listen((event) async {
+    _requests = _reference.onValue.listen((event) async {
       final provider = Provider.of<CurrentUser>(context, listen: false);
       currentUser = await provider.getCurrentUserId();
       sendersName = await provider.getCurrentUserDisplayName();
@@ -114,6 +118,7 @@ class _MessagesState extends State<Messages> {
           print('error getting notification $e');
         }
       }
+      _requests?.cancel();
     });
     await Future.delayed(const Duration(seconds: 1)); // Simulating a delay
   }
@@ -140,7 +145,7 @@ class _MessagesState extends State<Messages> {
         length: 3,
         child: Scaffold(
             appBar: AppBar(
-              automaticallyImplyLeading:false,
+              automaticallyImplyLeading: false,
               centerTitle: true,
               title: const Text("Notifications"),
               bottom: const TabBar(
@@ -242,16 +247,15 @@ class Emergency extends StatelessWidget {
             return GestureDetector(
               onTap: () async {
                 try {
-                  final locationListening =
-                      Provider.of<CurrentLocations>(context, listen: false);
                   Set<Marker> markers = {};
+                  final locationListening =
+                  Provider.of<CurrentLocations>(context, listen: false);
                   final polylineProvider =
                       Provider.of<GetLocationProvider>(context, listen: false);
                   final polyline = polylineProvider.polyline;
                   final provider =
                       Provider.of<AddFriend>(context, listen: false);
                   provider.acceptLocationRequest(receiverId: currentUser!);
-
                   LatLng? streamLocation =
                       await locationListening.startListening();
                   markers.add(
@@ -267,14 +271,18 @@ class Emergency extends StatelessWidget {
                       sos.currentLocation.toLatLng(), streamLocation);
                   String currentLocation = await getAddressFromLatLng(
                       sos.currentLocation.toLatLng());
+                  Position? currentPosition = await locationListening
+                      .determinePosition(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => RoutesMap(
-                          currentLocation: currentLocation,
-                          user: sos.sendersName,
-                          polyline: polyline,
-                          markers: markers),
+                        currentLocation: currentLocation,
+                        user: sos.sendersName,
+                        polyline: polyline,
+                        markers: markers,
+                        currentPosition: currentPosition,
+                      ),
                     ),
                   );
                 } catch (e) {
@@ -373,7 +381,8 @@ class SharedLocation extends StatelessWidget {
                       await polylineProvider.addPolyline(
                           message.currentLocation.toLatLng(), streamLocation);
                       final polyline = polylineProvider.polyline;
-
+                      Position currentPosition =
+                          await locationListening.determinePosition(context);
                       markers.add(
                         Marker(
                           markerId: MarkerId(message.sender),
@@ -389,10 +398,12 @@ class SharedLocation extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (context) => RoutesMap(
-                              polyline: polyline,
-                              markers: markers,
-                              user: message.sender,
-                              currentLocation: currentLocation),
+                            polyline: polyline,
+                            markers: markers,
+                            user: message.sender,
+                            currentLocation: currentLocation,
+                            currentPosition: currentPosition,
+                          ),
                         ),
                       );
                     } catch (e) {
@@ -499,6 +510,8 @@ class RequestedLocations extends StatelessWidget {
 
                       LatLng? streamLocation =
                           await locationListening.startListening();
+                      Position currentPosition =
+                          await locationListening.determinePosition(context);
                       markers.add(
                         Marker(
                           markerId: MarkerId(message.sender),
@@ -512,14 +525,17 @@ class RequestedLocations extends StatelessWidget {
                           message.currentLocation.toLatLng(), streamLocation);
                       String currentLocation = await getAddressFromLatLng(
                           message.currentLocation.toLatLng());
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => RoutesMap(
-                              currentLocation: currentLocation,
-                              user: message.sender,
-                              polyline: polyline,
-                              markers: markers),
+                            currentLocation: currentLocation,
+                            user: message.sender,
+                            polyline: polyline,
+                            markers: markers,
+                            currentPosition: currentPosition,
+                          ),
                         ),
                       );
                     } catch (e) {
